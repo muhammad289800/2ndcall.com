@@ -6,7 +6,7 @@
   <title>Non-VoIP Number Manager</title>
   <style>
     body { font-family: Arial, sans-serif; margin: 0; background: #f5f7fb; color: #1d2433; }
-    .container { max-width: 1120px; margin: 24px auto; padding: 0 16px; }
+    .container { max-width: 1220px; margin: 24px auto; padding: 0 16px; }
     .header { margin-bottom: 18px; }
     h1 { margin: 0 0 6px 0; font-size: 28px; }
     .muted { color: #5b6578; font-size: 14px; }
@@ -32,13 +32,15 @@
     .actions { display: flex; gap: 6px; }
     .actions button { padding: 6px 8px; font-size: 12px; width: auto; }
     .small { font-size: 12px; color: #596271; }
+    .balance { font-size: 24px; font-weight: 700; margin: 8px 0 12px 0; }
+    code { background: #eef1f7; padding: 2px 5px; border-radius: 4px; }
   </style>
 </head>
 <body>
   <div class="container">
     <div class="header">
       <h1>Non-VoIP Virtual Number Manager</h1>
-      <div class="muted">Search, purchase, manage numbers, then trigger calls and SMS from one dashboard.</div>
+      <div class="muted">Order numbers, send/receive SMS and calls, and control a prepaid wallet from one dashboard.</div>
     </div>
 
     <div class="grid">
@@ -69,9 +71,52 @@
         </table>
         <p class="small">Enable real APIs with environment variables in `.env` (sample file included). Keep <code>mock</code> for safe local testing.</p>
       </div>
-
       <div class="card">
-        <h2>Search & purchase numbers</h2>
+        <h2>Wallet + provider balances</h2>
+        <div class="small">App wallet balance (required for ordering numbers/messages/calls)</div>
+        <div class="balance" id="wallet_balance">$0.00</div>
+        <div class="row">
+          <div>
+            <label>Top-up amount (USD)</label>
+            <input id="topup_amount" value="20" />
+          </div>
+          <div>
+            <label>Method label</label>
+            <select id="topup_method">
+              <option value="manual">manual</option>
+              <option value="bank_transfer">bank_transfer</option>
+              <option value="card">card</option>
+            </select>
+          </div>
+        </div>
+        <button id="topup_btn">Add funds</button>
+        <div id="wallet_status" class="status"></div>
+        <h3>Provider account balance (real API accounts)</h3>
+        <button id="refresh_provider_balances_btn" style="background:#5f6c84;">Refresh provider balances</button>
+        <table style="margin-top:8px;">
+          <thead>
+            <tr><th>Provider</th><th>Balance</th><th>Notes</th></tr>
+          </thead>
+          <tbody id="provider_balances">
+            <tr><td colspan="3" class="small">No data yet.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top: 16px;">
+      <h2>Webhook setup for receiving calls/messages</h2>
+      <div class="small">Configure these URLs in Twilio/Telnyx consoles so inbound messages and calls show up below.</div>
+      <ul class="small">
+        <li>Twilio SMS webhook: <code id="twilio_msg_webhook"></code></li>
+        <li>Twilio Voice webhook: <code id="twilio_voice_webhook"></code></li>
+        <li>Telnyx event webhook: <code id="telnyx_events_webhook"></code></li>
+      </ul>
+    </div>
+
+    <div class="grid" style="margin-top: 16px;">
+      <div class="card">
+        <h2>Search & order numbers</h2>
         <div class="row">
           <div>
             <label>Provider</label>
@@ -118,6 +163,26 @@
         <button id="search_btn">Search numbers</button>
         <div id="search_status" class="status"></div>
       </div>
+      <div class="card">
+        <h2>Managed numbers</h2>
+        <button id="refresh_numbers_btn">Refresh managed numbers</button>
+        <button id="sync_provider_btn" style="margin-top:8px; background:#5f6c84;">Sync from selected provider</button>
+        <div id="numbers_status" class="status"></div>
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Provider</th>
+              <th>Phone</th>
+              <th>Line type</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="managed_numbers">
+            <tr><td colspan="5" class="small">No managed numbers yet.</td></tr>
+          </tbody>
+        </table>
+      </div>
     </div>
 
     <div class="card" style="margin-top: 16px;">
@@ -141,27 +206,6 @@
 
     <div class="grid" style="margin-top: 16px;">
       <div class="card">
-        <h2>Managed numbers</h2>
-        <button id="refresh_numbers_btn">Refresh managed numbers</button>
-        <button id="sync_provider_btn" style="margin-top:8px; background:#5f6c84;">Sync from selected provider</button>
-        <div id="numbers_status" class="status"></div>
-        <table>
-          <thead>
-            <tr>
-              <th>ID</th>
-              <th>Provider</th>
-              <th>Phone</th>
-              <th>Line type</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody id="managed_numbers">
-            <tr><td colspan="5" class="small">No managed numbers yet.</td></tr>
-          </tbody>
-        </table>
-      </div>
-
-      <div class="card">
         <h2>Send message (SMS)</h2>
         <label>Provider</label>
         <select id="msg_provider"></select>
@@ -174,26 +218,56 @@
         <button id="send_msg_btn">Send message</button>
         <div id="msg_status" class="status"></div>
       </div>
+
+      <div class="card">
+        <h2>Start outbound call</h2>
+        <div class="row">
+          <div>
+            <label>Provider</label>
+            <select id="call_provider"></select>
+          </div>
+          <div>
+            <label>From number</label>
+            <select id="call_from"></select>
+          </div>
+        </div>
+        <label>To number (E.164)</label>
+        <input id="call_to" placeholder="+15551231234" />
+        <label style="margin-top:8px;">Estimated minutes (for wallet reserve)</label>
+        <input id="call_minutes" value="1" />
+        <label style="margin-top:8px;">Call script / spoken text (Twilio uses this directly)</label>
+        <textarea id="call_text" placeholder="This is a test call from the number manager app."></textarea>
+        <button id="start_call_btn">Start call</button>
+        <div id="call_status" class="status"></div>
+      </div>
     </div>
 
-    <div class="card" style="margin-top: 16px;">
-      <h2>Start outbound call</h2>
-      <div class="row">
-        <div>
-          <label>Provider</label>
-          <select id="call_provider"></select>
-        </div>
-        <div>
-          <label>From number</label>
-          <select id="call_from"></select>
-        </div>
+    <div class="grid" style="margin-top: 16px;">
+      <div class="card">
+        <h2>Received messages inbox</h2>
+        <button id="refresh_inbound_messages_btn">Refresh inbound messages</button>
+        <table style="margin-top:8px;">
+          <thead>
+            <tr><th>Time</th><th>Provider</th><th>From</th><th>To</th><th>Body</th><th>Status</th></tr>
+          </thead>
+          <tbody id="inbound_messages">
+            <tr><td colspan="6" class="small">No inbound messages yet.</td></tr>
+          </tbody>
+        </table>
       </div>
-      <label>To number (E.164)</label>
-      <input id="call_to" placeholder="+15551231234" />
-      <label style="margin-top:8px;">Call script / spoken text (Twilio uses this directly)</label>
-      <textarea id="call_text" placeholder="This is a test call from the number manager app."></textarea>
-      <button id="start_call_btn">Start call</button>
-      <div id="call_status" class="status"></div>
+
+      <div class="card">
+        <h2>Received calls inbox</h2>
+        <button id="refresh_inbound_calls_btn">Refresh inbound calls</button>
+        <table style="margin-top:8px;">
+          <thead>
+            <tr><th>Time</th><th>Provider</th><th>From</th><th>To</th><th>Status</th><th>Call ID</th></tr>
+          </thead>
+          <tbody id="inbound_calls">
+            <tr><td colspan="6" class="small">No inbound calls yet.</td></tr>
+          </tbody>
+        </table>
+      </div>
     </div>
   </div>
   <script src="{{ url_for('static', filename='app.js') }}"></script>
