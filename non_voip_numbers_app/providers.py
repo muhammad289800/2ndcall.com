@@ -450,6 +450,40 @@ class TelnyxProvider(BaseProvider):
             json_payload={"messaging_profile_id": self.messaging_profile_id},
         )
 
+    def _auto_sync_from_number_to_messaging_profile(
+        self,
+        from_number: str,
+        *,
+        strict: bool,
+    ) -> dict[str, Any]:
+        if not self.messaging_profile_id:
+            message = (
+                "TELNYX_MESSAGING_PROFILE_ID is not configured. "
+                "Auto-sync to messaging profile is disabled."
+            )
+            if strict:
+                raise ProviderError(message)
+            return {"skipped": True, "warning": message}
+
+        number_id = self._resolve_phone_number_id(from_number)
+        if not number_id:
+            message = (
+                f"Could not resolve Telnyx phone number ID for {from_number}. "
+                "Order/sync the number first so it can be auto-linked to messaging profile."
+            )
+            if strict:
+                raise ProviderError(message)
+            return {"skipped": True, "warning": message}
+
+        try:
+            assignment = self._assign_messaging_profile(number_id)
+            return {"synced": True, "phone_number_id": number_id, "assignment": assignment}
+        except ProviderError as exc:
+            message = f"Auto-sync to Telnyx messaging profile failed: {exc}"
+            if strict:
+                raise ProviderError(message) from exc
+            return {"skipped": True, "phone_number_id": number_id, "warning": message}
+
     def purchase_number(self, phone_number: str) -> dict[str, Any]:
         payload = self._request(
             "POST",
@@ -510,6 +544,7 @@ class TelnyxProvider(BaseProvider):
         return {"released": True, "provider_number_id": provider_number_id}
 
     def send_message(self, from_number: str, to_number: str, body: str) -> dict[str, Any]:
+        profile_sync = self._auto_sync_from_number_to_messaging_profile(from_number, strict=True)
         try:
             payload = self._request(
                 "POST",
@@ -521,16 +556,22 @@ class TelnyxProvider(BaseProvider):
             if "40305" in error_text or "Invalid 'from' address" in error_text:
                 raise ProviderError(
                     f"{error_text} "
-                    "This number is not linked to a Telnyx Messaging Profile. "
-                    "Set TELNYX_MESSAGING_PROFILE_ID and re-order/attach the number to that profile."
+                    "The app already attempted to auto-sync this number to TELNYX_MESSAGING_PROFILE_ID. "
+                    "Confirm the number is approved inside that messaging profile and retry."
                 ) from exc
             raise
         data = payload.get("data", {})
-        return {"id": data.get("id"), "status": data.get("status"), "raw": payload}
+        return {
+            "id": data.get("id"),
+            "status": data.get("status"),
+            "raw": payload,
+            "auto_profile_sync": profile_sync,
+        }
 
     def start_call(self, from_number: str, to_number: str, say_text: str) -> dict[str, Any]:
         if not self.connection_id:
             raise ProviderError("TELNYX_CONNECTION_ID is required for outbound calls.")
+        profile_sync = self._auto_sync_from_number_to_messaging_profile(from_number, strict=False)
         call_payload: dict[str, Any] = {
             "connection_id": self.connection_id,
             "from": from_number,
@@ -544,6 +585,7 @@ class TelnyxProvider(BaseProvider):
             "id": data.get("call_control_id") or data.get("call_leg_id"),
             "status": data.get("state", "initiated"),
             "raw": payload,
+            "auto_profile_sync": profile_sync,
         }
 
     def pricing_profile(self) -> dict[str, Any]:

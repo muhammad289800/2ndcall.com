@@ -28,6 +28,9 @@ The app includes a provider ranking to keep costs predictable:
   - `twilio` (real API).
 - SQLite persistence for managed numbers and call/SMS logs.
 - Sync owned numbers from providers into the local dashboard.
+- Telnyx automation:
+  - new ordered numbers are auto-attached to your `TELNYX_MESSAGING_PROFILE_ID`,
+  - numbers used in outbound SMS/calls are auto-synced to messaging profile before send/start.
 - Webhook endpoints for inbound telecom events:
   - `/webhooks/twilio/message`
   - `/webhooks/twilio/voice`

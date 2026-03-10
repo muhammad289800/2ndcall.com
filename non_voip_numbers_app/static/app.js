@@ -340,9 +340,12 @@ async function sendMessage() {
       method: "POST",
       body: JSON.stringify(payload),
     });
+    const syncWarning = data.message?.auto_profile_sync?.warning
+      ? ` | Sync warning: ${data.message.auto_profile_sync.warning}`
+      : "";
     setStatus(
       "msg_status",
-      `Message queued: ${data.message.id || "ok"} | Charged $${Number(data.charged_usd || 0).toFixed(2)}`
+      `Message queued: ${data.message.id || "ok"} | Charged $${Number(data.charged_usd || 0).toFixed(2)}${syncWarning}`
     );
     await loadWallet();
   } catch (error) {
@@ -365,9 +368,12 @@ async function startCall() {
       method: "POST",
       body: JSON.stringify(payload),
     });
+    const syncWarning = data.call?.auto_profile_sync?.warning
+      ? ` | Sync warning: ${data.call.auto_profile_sync.warning}`
+      : "";
     setStatus(
       "call_status",
-      `Call initiated: ${data.call.id || "ok"} | Charged $${Number(data.charged_usd || 0).toFixed(2)}`
+      `Call initiated: ${data.call.id || "ok"} | Charged $${Number(data.charged_usd || 0).toFixed(2)}${syncWarning}`
     );
     await loadWallet();
   } catch (error) {
