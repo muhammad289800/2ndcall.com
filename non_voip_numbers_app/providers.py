@@ -425,6 +425,19 @@ class TelnyxProvider(BaseProvider):
                 return item.get("provider_number_id")
         return None
 
+    @staticmethod
+    def _extract_order_phone_number_id(order_payload: dict[str, Any], phone_number: str) -> str | None:
+        data = order_payload.get("data", {}) if isinstance(order_payload, dict) else {}
+        phone_rows = data.get("phone_numbers", [])
+        if not isinstance(phone_rows, list):
+            return None
+        for row in phone_rows:
+            if not isinstance(row, dict):
+                continue
+            if row.get("phone_number") == phone_number and row.get("id"):
+                return str(row["id"])
+        return None
+
     def _assign_messaging_profile(self, phone_number_id: str) -> dict[str, Any]:
         if not self.messaging_profile_id:
             raise ProviderError(
@@ -443,7 +456,10 @@ class TelnyxProvider(BaseProvider):
             "/number_orders",
             json_payload={"phone_numbers": [{"phone_number": phone_number}]},
         )
-        number_id = self._resolve_phone_number_id(phone_number)
+        # Prefer explicit number ID from order response, then fallback to listing owned numbers.
+        number_id = self._extract_order_phone_number_id(payload, phone_number) or self._resolve_phone_number_id(
+            phone_number
+        )
         order = payload.get("data", {})
         warnings: list[str] = []
         messaging_assignment: dict[str, Any] | None = None
@@ -457,7 +473,7 @@ class TelnyxProvider(BaseProvider):
             else:
                 warnings.append(
                     "Could not resolve Telnyx phone number ID immediately after order; "
-                    "attach the number to your messaging profile manually in Telnyx console if SMS fails."
+                    "auto-attach to messaging profile skipped. Attach manually in Telnyx console if SMS fails."
                 )
         else:
             warnings.append(
