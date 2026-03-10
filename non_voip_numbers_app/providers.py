@@ -399,7 +399,13 @@ class TelnyxProvider(BaseProvider):
             line_type = self.lookup_line_type(phone_number)
             if non_voip_only and line_type == "voip":
                 continue
-            features = item.get("features", [])
+            features_raw = item.get("features", [])
+            if isinstance(features_raw, list):
+                features = {str(x).lower() for x in features_raw if x is not None}
+            elif isinstance(features_raw, dict):
+                features = {str(k).lower() for k, v in features_raw.items() if v}
+            else:
+                features = set()
             offers.append(
                 {
                     "phone_number": phone_number,

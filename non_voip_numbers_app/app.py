@@ -92,7 +92,7 @@ def create_app() -> Flask:
         balance = storage.get_wallet_balance()
         if balance < amount:
             raise ValueError(
-                f"Insufficient wallet balance. Need ${amount:.2f} but only have ${balance:.2f}. "
+                f"Insufficient wallet balance. Need ${amount:.3f} but only have ${balance:.3f}. "
                 "Top up wallet first."
             )
 
@@ -198,7 +198,7 @@ def create_app() -> Flask:
                 non_voip_only=parse_bool(body.get("non_voip_only"), True),
             )
             return jsonify({"provider": provider_id, "results": results})
-        except (ProviderError, ValueError) as exc:
+        except (ProviderError, ValueError, TypeError) as exc:
             return jsonify({"error": str(exc)}), 400
 
     @app.post("/api/numbers/purchase")
