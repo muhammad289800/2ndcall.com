@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Non-VoIP Number Manager</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 0; background: #f5f7fb; color: #1d2433; }
+    .container { max-width: 1120px; margin: 24px auto; padding: 0 16px; }
+    .header { margin-bottom: 18px; }
+    h1 { margin: 0 0 6px 0; font-size: 28px; }
+    .muted { color: #5b6578; font-size: 14px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; }
+    .card { background: white; border-radius: 12px; padding: 16px; box-shadow: 0 2px 8px rgba(20, 30, 60, 0.08); }
+    .card h2 { margin-top: 0; font-size: 18px; }
+    label { display: block; font-size: 13px; margin-bottom: 5px; color: #4d5566; }
+    input, select, textarea, button { width: 100%; box-sizing: border-box; border-radius: 8px; border: 1px solid #c5cede; padding: 10px; font-size: 14px; }
+    textarea { min-height: 78px; resize: vertical; }
+    button { background: #1f64ff; color: white; border: none; cursor: pointer; font-weight: 600; }
+    button:hover { background: #1149cb; }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px; }
+    .row-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 10px; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { text-align: left; padding: 8px; border-bottom: 1px solid #e6ebf3; vertical-align: top; }
+    th { background: #f6f8fc; }
+    .chip { display: inline-block; padding: 3px 8px; border-radius: 999px; font-size: 12px; background: #eef3ff; color: #2745a4; }
+    .danger { background: #b51f2f; }
+    .danger:hover { background: #8f1422; }
+    .status { margin-top: 8px; font-size: 13px; min-height: 18px; }
+    .ok { color: #1a7f37; }
+    .err { color: #b00020; }
+    .actions { display: flex; gap: 6px; }
+    .actions button { padding: 6px 8px; font-size: 12px; width: auto; }
+    .small { font-size: 12px; color: #596271; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>Non-VoIP Virtual Number Manager</h1>
+      <div class="muted">Search, purchase, manage numbers, then trigger calls and SMS from one dashboard.</div>
+    </div>
+
+    <div class="grid">
+      <div class="card">
+        <h2>Provider setup + low-cost ranking</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Rank</th>
+              <th>Provider</th>
+              <th>Est. local monthly</th>
+              <th>Integrated</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for details in pricing_rows %}
+            <tr>
+              <td>{{ details.rank }}</td>
+              <td>
+                <strong>{{ details.label }}</strong>
+                <div class="small">{{ details.notes }}</div>
+              </td>
+              <td>{{ details.estimated_local_number_monthly_usd }}</td>
+              <td>{% if details.integrated_in_app %}Yes{% else %}No{% endif %}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        <p class="small">Enable real APIs with environment variables in `.env` (sample file included). Keep <code>mock</code> for safe local testing.</p>
+      </div>
+
+      <div class="card">
+        <h2>Search & purchase numbers</h2>
+        <div class="row">
+          <div>
+            <label>Provider</label>
+            <select id="provider"></select>
+          </div>
+          <div>
+            <label>Country</label>
+            <input id="country" value="US" />
+          </div>
+        </div>
+        <div class="row-3">
+          <div>
+            <label>Area code (optional)</label>
+            <input id="area_code" placeholder="212" />
+          </div>
+          <div>
+            <label>Limit</label>
+            <input id="limit" value="10" />
+          </div>
+          <div>
+            <label>Non-VoIP only</label>
+            <select id="non_voip_only">
+              <option value="true">true</option>
+              <option value="false">false</option>
+            </select>
+          </div>
+        </div>
+        <div class="row">
+          <div>
+            <label>Require SMS</label>
+            <select id="require_sms">
+              <option value="true">true</option>
+              <option value="false">false</option>
+            </select>
+          </div>
+          <div>
+            <label>Require Voice</label>
+            <select id="require_voice">
+              <option value="true">true</option>
+              <option value="false">false</option>
+            </select>
+          </div>
+        </div>
+        <button id="search_btn">Search numbers</button>
+        <div id="search_status" class="status"></div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top: 16px;">
+      <h2>Search results</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Phone number</th>
+            <th>Line type</th>
+            <th>Capabilities</th>
+            <th>Region</th>
+            <th>Monthly est.</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody id="search_results">
+          <tr><td colspan="6" class="small">No results yet.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="grid" style="margin-top: 16px;">
+      <div class="card">
+        <h2>Managed numbers</h2>
+        <button id="refresh_numbers_btn">Refresh managed numbers</button>
+        <button id="sync_provider_btn" style="margin-top:8px; background:#5f6c84;">Sync from selected provider</button>
+        <div id="numbers_status" class="status"></div>
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Provider</th>
+              <th>Phone</th>
+              <th>Line type</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="managed_numbers">
+            <tr><td colspan="5" class="small">No managed numbers yet.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="card">
+        <h2>Send message (SMS)</h2>
+        <label>Provider</label>
+        <select id="msg_provider"></select>
+        <label style="margin-top:8px;">From number</label>
+        <select id="msg_from"></select>
+        <label style="margin-top:8px;">To number (E.164)</label>
+        <input id="msg_to" placeholder="+15551231234" />
+        <label style="margin-top:8px;">Message text</label>
+        <textarea id="msg_body" placeholder="Your message"></textarea>
+        <button id="send_msg_btn">Send message</button>
+        <div id="msg_status" class="status"></div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top: 16px;">
+      <h2>Start outbound call</h2>
+      <div class="row">
+        <div>
+          <label>Provider</label>
+          <select id="call_provider"></select>
+        </div>
+        <div>
+          <label>From number</label>
+          <select id="call_from"></select>
+        </div>
+      </div>
+      <label>To number (E.164)</label>
+      <input id="call_to" placeholder="+15551231234" />
+      <label style="margin-top:8px;">Call script / spoken text (Twilio uses this directly)</label>
+      <textarea id="call_text" placeholder="This is a test call from the number manager app."></textarea>
+      <button id="start_call_btn">Start call</button>
+      <div id="call_status" class="status"></div>
+    </div>
+  </div>
+  <script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>
+
