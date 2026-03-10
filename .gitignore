@@ -1,5 +1,0 @@
-__pycache__/
-*.pyc
-non_voip_numbers.db
-.env
-
