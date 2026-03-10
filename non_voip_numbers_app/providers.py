@@ -322,6 +322,7 @@ class TelnyxProvider(BaseProvider):
     def __init__(self) -> None:
         self.api_key = os.environ.get("TELNYX_API_KEY", "")
         self.connection_id = os.environ.get("TELNYX_CONNECTION_ID", "")
+        self.messaging_profile_id = os.environ.get("TELNYX_MESSAGING_PROFILE_ID", "")
         self.call_webhook_url = os.environ.get("TELNYX_CALL_WEBHOOK_URL", "")
 
     def is_configured(self) -> bool:
@@ -418,6 +419,18 @@ class TelnyxProvider(BaseProvider):
                 return item.get("provider_number_id")
         return None
 
+    def _assign_messaging_profile(self, phone_number_id: str) -> dict[str, Any]:
+        if not self.messaging_profile_id:
+            raise ProviderError(
+                "TELNYX_MESSAGING_PROFILE_ID is not set. "
+                "Telnyx SMS requires your number to be attached to a Messaging Profile."
+            )
+        return self._request(
+            "PATCH",
+            f"/phone_numbers/{phone_number_id}/messaging",
+            json_payload={"messaging_profile_id": self.messaging_profile_id},
+        )
+
     def purchase_number(self, phone_number: str) -> dict[str, Any]:
         payload = self._request(
             "POST",
@@ -426,11 +439,35 @@ class TelnyxProvider(BaseProvider):
         )
         number_id = self._resolve_phone_number_id(phone_number)
         order = payload.get("data", {})
+        warnings: list[str] = []
+        messaging_assignment: dict[str, Any] | None = None
+
+        if self.messaging_profile_id:
+            if number_id:
+                try:
+                    messaging_assignment = self._assign_messaging_profile(number_id)
+                except ProviderError as exc:
+                    warnings.append(f"Failed to attach number to messaging profile: {exc}")
+            else:
+                warnings.append(
+                    "Could not resolve Telnyx phone number ID immediately after order; "
+                    "attach the number to your messaging profile manually in Telnyx console if SMS fails."
+                )
+        else:
+            warnings.append(
+                "TELNYX_MESSAGING_PROFILE_ID is not configured. "
+                "SMS may fail with 40305 until the number is linked to a messaging profile."
+            )
+
         return {
             "phone_number": phone_number,
             "provider_number_id": number_id or order.get("id"),
             "line_type": self.lookup_line_type(phone_number),
-            "raw": payload,
+            "raw": {
+                "order": payload,
+                "messaging_assignment": messaging_assignment,
+            },
+            "warnings": warnings,
         }
 
     def list_owned_numbers(self) -> list[dict[str, Any]]:
@@ -451,11 +488,21 @@ class TelnyxProvider(BaseProvider):
         return {"released": True, "provider_number_id": provider_number_id}
 
     def send_message(self, from_number: str, to_number: str, body: str) -> dict[str, Any]:
-        payload = self._request(
-            "POST",
-            "/messages",
-            json_payload={"from": from_number, "to": to_number, "text": body},
-        )
+        try:
+            payload = self._request(
+                "POST",
+                "/messages",
+                json_payload={"from": from_number, "to": to_number, "text": body},
+            )
+        except ProviderError as exc:
+            error_text = str(exc)
+            if "40305" in error_text or "Invalid 'from' address" in error_text:
+                raise ProviderError(
+                    f"{error_text} "
+                    "This number is not linked to a Telnyx Messaging Profile. "
+                    "Set TELNYX_MESSAGING_PROFILE_ID and re-order/attach the number to that profile."
+                ) from exc
+            raise
         data = payload.get("data", {})
         return {"id": data.get("id"), "status": data.get("status"), "raw": payload}
 

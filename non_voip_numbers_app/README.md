@@ -69,6 +69,7 @@ This repo now includes a root `railway.json` that deploys this app with Gunicorn
 3. Add environment variables:
    - `TELNYX_API_KEY` (for Telnyx),
    - `TELNYX_CONNECTION_ID` (for Telnyx outbound calls),
+   - `TELNYX_MESSAGING_PROFILE_ID` (for Telnyx SMS sender association),
    - `TWILIO_ACCOUNT_SID` and `TWILIO_AUTH_TOKEN` (if using Twilio),
    - optional: `TWILIO_INBOUND_SAY_TEXT`.
 4. Deploy.
@@ -85,6 +86,7 @@ Important keys:
 - `TWILIO_AUTH_TOKEN`
 - `TELNYX_API_KEY`
 - `TELNYX_CONNECTION_ID` (required for Telnyx outbound calls)
+- `TELNYX_MESSAGING_PROFILE_ID` (required by Telnyx to send SMS from purchased numbers)
 - `TWILIO_INBOUND_SAY_TEXT` (optional inbound voice response text)
 
 ## Non-VoIP filtering behavior
@@ -100,4 +102,5 @@ Important keys:
 - Number ordering/calls/messages are blocked when wallet balance is insufficient.
 - Wallet top-up endpoint is currently manual and app-managed (`/api/wallet/topup`).
 - Provider-side account balances are visible via `/api/providers/balances`.
+- If Telnyx returns error `40305 Invalid 'from' address`, attach the number to a Telnyx Messaging Profile and set `TELNYX_MESSAGING_PROFILE_ID`.
 

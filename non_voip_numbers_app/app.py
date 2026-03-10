@@ -233,7 +233,14 @@ def create_app() -> Flask:
                 description=f"Ordered number {record['phone_number']}",
                 reference_id=str(record.get("provider_number_id") or ""),
             )
-            return jsonify({"number": record, "wallet": charged, "charged_usd": estimated_cost})
+            return jsonify(
+                {
+                    "number": record,
+                    "wallet": charged,
+                    "charged_usd": estimated_cost,
+                    "warnings": result.get("warnings", []),
+                }
+            )
         except (ProviderError, ValueError) as exc:
             return jsonify({"error": str(exc)}), 400
 

@@ -220,9 +220,11 @@ function renderSearchResults() {
             non_voip_only: nonVoipOnly,
           }),
         });
+        const warnings = data.warnings || [];
+        const warningText = warnings.length ? ` Warning: ${warnings.join(" | ")}` : "";
         setStatus(
           "search_status",
-          `Ordered ${btn.dataset.buyNumber}. Charged $${Number(data.charged_usd || 0).toFixed(2)}.`
+          `Ordered ${btn.dataset.buyNumber}. Charged $${Number(data.charged_usd || 0).toFixed(2)}.${warningText}`
         );
         await loadWallet();
         await loadNumbers();
