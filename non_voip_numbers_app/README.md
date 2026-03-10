@@ -3,9 +3,9 @@
 This is a standalone Flask app for:
 
 - searching available virtual numbers from API providers,
-- buying and managing numbers,
-- sending SMS,
-- starting outbound calls,
+- ordering and managing numbers,
+- sending and receiving SMS,
+- starting outbound calls and receiving inbound calls via webhooks,
 - enforcing a **non-VoIP-only** filter when line-type lookup is available.
 
 ## Why this setup is low-cost
@@ -21,12 +21,17 @@ The app includes a provider ranking to keep costs predictable:
 ## Features
 
 - Unified number management dashboard.
+- Wallet ledger with top-up and cost-based charging for number orders, SMS, and calls.
 - Provider adapters:
   - `mock` (works instantly for local testing),
   - `telnyx` (real API),
   - `twilio` (real API).
 - SQLite persistence for managed numbers and call/SMS logs.
 - Sync owned numbers from providers into the local dashboard.
+- Webhook endpoints for inbound telecom events:
+  - `/webhooks/twilio/message`
+  - `/webhooks/twilio/voice`
+  - `/webhooks/telnyx/events`
 
 ## Setup
 
@@ -39,6 +44,14 @@ From repo root:
    - `python3 -m non_voip_numbers_app.app`
 3. Open:
    - `http://127.0.0.1:5050`
+
+## Real usage flow (recommended)
+
+1. Add provider API credentials in `.env`.
+2. Top up wallet from the dashboard.
+3. Search and order numbers from low-cost providers.
+4. Configure provider webhooks to this app domain.
+5. Use dashboard for outbound calls/SMS and inbound inbox monitoring.
 
 ## Railway deployment
 
@@ -56,7 +69,8 @@ This repo now includes a root `railway.json` that deploys this app with Gunicorn
 3. Add environment variables:
    - `TELNYX_API_KEY` (for Telnyx),
    - `TELNYX_CONNECTION_ID` (for Telnyx outbound calls),
-   - `TWILIO_ACCOUNT_SID` and `TWILIO_AUTH_TOKEN` (if using Twilio).
+   - `TWILIO_ACCOUNT_SID` and `TWILIO_AUTH_TOKEN` (if using Twilio),
+   - optional: `TWILIO_INBOUND_SAY_TEXT`.
 4. Deploy.
 5. Verify:
    - `GET https://<your-railway-domain>/health` returns `{"ok": true}`.
@@ -71,6 +85,7 @@ Important keys:
 - `TWILIO_AUTH_TOKEN`
 - `TELNYX_API_KEY`
 - `TELNYX_CONNECTION_ID` (required for Telnyx outbound calls)
+- `TWILIO_INBOUND_SAY_TEXT` (optional inbound voice response text)
 
 ## Non-VoIP filtering behavior
 
@@ -79,4 +94,10 @@ Important keys:
   - Twilio: Lookup API (line type intelligence)
   - Telnyx: Number Lookup API (`portability.line_type` / `carrier.type`)
 - If line type cannot be determined, result is `unknown`.
+
+## Notes on payments and balances
+
+- Number ordering/calls/messages are blocked when wallet balance is insufficient.
+- Wallet top-up endpoint is currently manual and app-managed (`/api/wallet/topup`).
+- Provider-side account balances are visible via `/api/providers/balances`.
 

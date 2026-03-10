@@ -54,6 +54,16 @@ class BaseProvider:
             "configured": self.is_configured(),
         }
 
+    def pricing_profile(self) -> dict[str, Any]:
+        return {
+            "number_monthly_usd": 1.0,
+            "sms_outbound_usd": 0.01,
+            "call_per_min_usd": 0.02,
+        }
+
+    def account_balance(self) -> dict[str, Any]:
+        return {"balance": None, "currency": "USD", "source": "not_available"}
+
 
 class MockProvider(BaseProvider):
     provider_id = "mock"
@@ -119,6 +129,16 @@ class MockProvider(BaseProvider):
             "status": "queued",
             "raw": {"from": from_number, "to": to_number, "say_text": say_text},
         }
+
+    def pricing_profile(self) -> dict[str, Any]:
+        return {
+            "number_monthly_usd": 0.75,
+            "sms_outbound_usd": 0.005,
+            "call_per_min_usd": 0.01,
+        }
+
+    def account_balance(self) -> dict[str, Any]:
+        return {"balance": 1000.0, "currency": "USD", "source": "mock"}
 
 
 class TwilioProvider(BaseProvider):
@@ -275,6 +295,23 @@ class TwilioProvider(BaseProvider):
             data={"From": from_number, "To": to_number, "Twiml": twiml},
         )
         return {"id": payload.get("sid"), "status": payload.get("status"), "raw": payload}
+
+    def pricing_profile(self) -> dict[str, Any]:
+        return {
+            "number_monthly_usd": 1.15,
+            "sms_outbound_usd": 0.0085,
+            "call_per_min_usd": 0.014,
+        }
+
+    def account_balance(self) -> dict[str, Any]:
+        if not self.is_configured():
+            return {"balance": None, "currency": "USD", "source": "not_configured"}
+        payload = self._request("GET", f"/Accounts/{self.account_sid}/Balance.json")
+        try:
+            amount = float(payload.get("balance", "0"))
+        except (TypeError, ValueError):
+            amount = 0.0
+        return {"balance": amount, "currency": payload.get("currency", "USD"), "source": "twilio"}
 
 
 class TelnyxProvider(BaseProvider):
@@ -438,6 +475,30 @@ class TelnyxProvider(BaseProvider):
             "id": data.get("call_control_id") or data.get("call_leg_id"),
             "status": data.get("state", "initiated"),
             "raw": payload,
+        }
+
+    def pricing_profile(self) -> dict[str, Any]:
+        return {
+            "number_monthly_usd": 1.0,
+            "sms_outbound_usd": 0.004,
+            "call_per_min_usd": 0.01,
+        }
+
+    def account_balance(self) -> dict[str, Any]:
+        if not self.is_configured():
+            return {"balance": None, "currency": "USD", "source": "not_configured"}
+        payload = self._request("GET", "/balance")
+        data = payload.get("data", payload)
+        try:
+            amount = float(data.get("balance", "0"))
+        except (TypeError, ValueError):
+            amount = 0.0
+        return {
+            "balance": amount,
+            "currency": data.get("currency", "USD"),
+            "source": "telnyx",
+            "pending": data.get("pending"),
+            "available_credit": data.get("available_credit"),
         }
 
 
