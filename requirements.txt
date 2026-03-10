@@ -1,4 +1,14 @@
-flask
+telethon
+openpyxl
+pandas
 requests
+beautifulsoup4
+qrcode
+cloudinary
+google-generativeai
+openai
+flask
 gunicorn
-
+pyotp
+qrcode[pil]
+pillow
