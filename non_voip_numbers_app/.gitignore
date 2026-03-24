@@ -1,5 +1,6 @@
 __pycache__/
 *.pyc
 non_voip_numbers.db
+jamia_lms.db
 .env
 

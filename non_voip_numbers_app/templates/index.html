@@ -3,350 +3,734 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Jamia Ajmal ul Madaris LMS</title>
+  <title>Jamia Ajmal ul Madaris | University LMS</title>
   <style>
-    body { font-family: Arial, sans-serif; margin: 0; background: #f5f7fb; color: #1d2433; }
-    .container { max-width: 1380px; margin: 20px auto; padding: 0 14px 30px 14px; }
-    h1 { margin: 0; font-size: 29px; }
-    h2 { margin: 0 0 8px 0; font-size: 18px; }
-    h3 { margin: 10px 0 8px 0; font-size: 15px; }
-    .muted { color: #5b6578; font-size: 13px; }
-    .hero { margin-bottom: 14px; background: linear-gradient(135deg, #19356f, #2553a8); color: white; border-radius: 12px; padding: 18px; }
-    .hero .meta { font-size: 13px; opacity: .9; margin-top: 4px; }
-    .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; margin-top: 12px; }
-    .stat { background: rgba(255,255,255,0.16); border: 1px solid rgba(255,255,255,0.22); border-radius: 8px; padding: 8px; }
-    .stat .num { font-size: 19px; font-weight: 700; }
-    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 12px; }
-    .card { background: white; border-radius: 10px; padding: 12px; box-shadow: 0 2px 8px rgba(20, 30, 60, 0.07); }
-    label { display: block; font-size: 12px; margin-bottom: 4px; color: #4d5566; }
-    input, select, textarea, button { width: 100%; box-sizing: border-box; border-radius: 7px; border: 1px solid #c5cede; padding: 8px; font-size: 13px; }
+    :root {
+      --bg: #f3f6fb;
+      --panel: #ffffff;
+      --border: #d9e2ef;
+      --text: #15223b;
+      --muted: #60708e;
+      --brand: #2448a4;
+      --brand-strong: #1b3a86;
+      --shadow: 0 10px 24px rgba(21, 34, 59, 0.08);
+      --radius: 14px;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", Inter, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+    .layout {
+      display: grid;
+      grid-template-columns: 260px 1fr;
+      min-height: 100vh;
+    }
+    .sidebar {
+      background: linear-gradient(180deg, #0e214a, #153067 62%, #1f4489);
+      color: #eef4ff;
+      padding: 22px 16px;
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      overflow-y: auto;
+    }
+    .brand {
+      padding: 14px 12px;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 12px;
+      margin-bottom: 16px;
+      background: rgba(255, 255, 255, 0.06);
+    }
+    .brand h1 {
+      font-size: 18px;
+      margin: 0;
+      line-height: 1.35;
+    }
+    .brand p {
+      margin: 6px 0 0;
+      opacity: 0.9;
+      font-size: 12px;
+    }
+    .menu {
+      display: grid;
+      gap: 6px;
+    }
+    .menu a {
+      color: #dce7ff;
+      text-decoration: none;
+      font-size: 13px;
+      border: 1px solid transparent;
+      border-radius: 10px;
+      padding: 8px 10px;
+      transition: background .2s ease, border .2s ease;
+    }
+    .menu a:hover {
+      background: rgba(255, 255, 255, 0.12);
+      border-color: rgba(255, 255, 255, 0.2);
+    }
+    .main {
+      padding: 20px;
+      display: grid;
+      gap: 16px;
+    }
+    .topbar {
+      background: linear-gradient(120deg, #253f80, #325bb0);
+      color: #fff;
+      border-radius: var(--radius);
+      padding: 18px;
+      box-shadow: var(--shadow);
+    }
+    .topbar h2 {
+      margin: 0;
+      font-size: 24px;
+      font-weight: 700;
+      letter-spacing: 0.2px;
+    }
+    .topbar p {
+      margin: 8px 0 0;
+      font-size: 13px;
+      opacity: 0.92;
+      max-width: 900px;
+      line-height: 1.5;
+    }
+    .grid-stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+      gap: 12px;
+    }
+    .metric {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px;
+      box-shadow: var(--shadow);
+    }
+    .metric .label {
+      font-size: 12px;
+      color: var(--muted);
+      margin-bottom: 5px;
+    }
+    .metric .value {
+      font-size: 22px;
+      font-weight: 700;
+      color: #1c2f58;
+    }
+    .section {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 16px;
+    }
+    .section h3 {
+      margin: 0 0 10px;
+      font-size: 18px;
+      color: #1a315f;
+    }
+    .section p.meta {
+      margin: 0 0 12px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 12px;
+    }
+    .card {
+      background: #fcfdff;
+      border: 1px solid #dde5f2;
+      border-radius: 12px;
+      padding: 12px;
+    }
+    .card h4 {
+      margin: 0 0 10px;
+      font-size: 15px;
+      color: #20355f;
+    }
+    label {
+      display: block;
+      font-size: 12px;
+      color: #4f6284;
+      margin-bottom: 4px;
+      font-weight: 600;
+    }
+    input, select, textarea, button {
+      width: 100%;
+      border: 1px solid #c9d5e9;
+      border-radius: 9px;
+      padding: 9px 10px;
+      font-size: 13px;
+      background: #fff;
+      color: #1b2f57;
+    }
     textarea { min-height: 70px; resize: vertical; }
-    button { background: #1f64ff; color: white; border: none; cursor: pointer; font-weight: 600; margin-top: 6px; }
-    button:hover { background: #1149cb; }
-    .secondary { background: #5f6c84; }
-    .secondary:hover { background: #4f5a70; }
-    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px; }
-    .row-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 8px; }
-    table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 7px; }
-    th, td { text-align: left; padding: 6px; border-bottom: 1px solid #e6ebf3; vertical-align: top; }
-    th { background: #f6f8fc; }
-    .status { margin-top: 6px; font-size: 12px; min-height: 16px; }
-    .ok { color: #1a7f37; }
-    .err { color: #b00020; }
-    .tiny { font-size: 11px; color: #596271; }
-    .portal { background: #f8fbff; border: 1px dashed #cbd8ef; border-radius: 8px; padding: 8px; margin-top: 8px; }
-    code { background: #eef1f7; padding: 1px 4px; border-radius: 4px; }
+    .row2, .row3 {
+      display: grid;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+    .row2 { grid-template-columns: 1fr 1fr; }
+    .row3 { grid-template-columns: 1fr 1fr 1fr; }
+    .actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 8px;
+    }
+    button {
+      border: none;
+      background: var(--brand);
+      color: #fff;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    button:hover { background: var(--brand-strong); }
+    button.alt { background: #596e94; }
+    button.alt:hover { background: #4a5e82; }
+    .actions button { width: auto; min-width: 140px; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+      margin-top: 8px;
+      background: #fff;
+      border-radius: 9px;
+      overflow: hidden;
+    }
+    th, td {
+      border-bottom: 1px solid #e6edf8;
+      padding: 8px;
+      text-align: left;
+      vertical-align: top;
+    }
+    th {
+      background: #f2f6fd;
+      color: #2a426f;
+      font-weight: 700;
+      font-size: 12px;
+    }
+    .status {
+      min-height: 18px;
+      font-size: 12px;
+      margin: 6px 0 2px;
+      font-weight: 600;
+    }
+    .ok { color: #0d7a3f; }
+    .err { color: #b32337; }
+    .mono {
+      white-space: pre-wrap;
+      background: #f6f9ff;
+      border: 1px dashed #c8d8f2;
+      padding: 8px;
+      border-radius: 8px;
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 11px;
+      color: #253f6e;
+    }
+    .small-note {
+      font-size: 12px;
+      color: var(--muted);
+    }
+    @media (max-width: 1140px) {
+      .layout { grid-template-columns: 1fr; }
+      .sidebar {
+        height: auto;
+        position: relative;
+      }
+      .menu { grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); }
+    }
+    @media (max-width: 760px) {
+      .row2, .row3 { grid-template-columns: 1fr; }
+      .main { padding: 12px; }
+    }
   </style>
 </head>
 <body>
-  <div class="container">
-    <div class="hero">
-      <h1>Jamia Ajmal ul Madaris - LMS & ERP</h1>
-      <div class="meta">Admissions, fees, attendance, papers, progress reports, parent access, Hifz, discipline, timetable, library and hostel.</div>
-      <div class="stats">
-        <div class="stat"><div class="tiny">Students</div><div class="num" id="sum_students">0</div></div>
-        <div class="stat"><div class="tiny">Teachers</div><div class="num" id="sum_teachers">0</div></div>
-        <div class="stat"><div class="tiny">Parents (users)</div><div class="num" id="sum_parents">0</div></div>
-        <div class="stat"><div class="tiny">Pending fees</div><div class="num" id="sum_pending_fees">0</div></div>
-        <div class="stat"><div class="tiny">Outstanding fee</div><div class="num" id="sum_fee_balance">0</div></div>
-        <div class="stat"><div class="tiny">Attendance today</div><div class="num" id="sum_attendance">0/0</div></div>
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="brand">
+        <h1>Jamia Ajmal ul Madaris</h1>
+        <p>Integrated University-Grade LMS ERP</p>
       </div>
-    </div>
+      <nav class="menu">
+        <a href="#dashboard">Dashboard</a>
+        <a href="#admission">Admissions</a>
+        <a href="#people">Faculty & Parents</a>
+        <a href="#fees">Fees & Accounts</a>
+        <a href="#attendance">Attendance</a>
+        <a href="#papers">Papers & Exams</a>
+        <a href="#reports">Progress & Parent Portal</a>
+        <a href="#announcements">Announcements</a>
+        <a href="#hifz">Hifz & Discipline</a>
+        <a href="#timetable">Timetable</a>
+        <a href="#library">Library</a>
+        <a href="#hostel">Hostel</a>
+      </nav>
+    </aside>
 
-    <div class="grid">
-      <div class="card">
-        <h2>1) Student Admission</h2>
-        <div class="row">
-          <div><label>Student name</label><input id="student_name" placeholder="Abdul Rahman" /></div>
-          <div><label>Arabic name (optional)</label><input id="student_arabic_name" placeholder="عبد الرحمن" /></div>
-        </div>
-        <div class="row">
-          <div><label>Class</label><input id="student_class" placeholder="Hifz A" /></div>
-          <div><label>Section</label><input id="student_section" placeholder="Morning" /></div>
-        </div>
-        <div class="row">
-          <div><label>Guardian name</label><input id="student_guardian" placeholder="Muhammad Ahmad" /></div>
-          <div><label>Guardian phone</label><input id="student_guardian_phone" placeholder="+923001112233" /></div>
-        </div>
-        <button id="add_student_btn">Admit Student</button>
-        <button id="refresh_students_btn" class="secondary">Refresh Students</button>
-        <div id="student_status" class="status"></div>
-        <table>
-          <thead><tr><th>ID</th><th>Admission</th><th>Name</th><th>Class</th><th>Guardian</th></tr></thead>
-          <tbody id="students_table"><tr><td colspan="5" class="tiny">No students.</td></tr></tbody>
-        </table>
-      </div>
+    <main class="main">
+      <section class="topbar" id="dashboard">
+        <h2>Executive LMS Console</h2>
+        <p>
+          Professional management console for admissions, finance, attendance, exams, parent communication,
+          and mudrassa-specific operations (Hifz, discipline, library, and hostel).
+        </p>
+      </section>
 
-      <div class="card">
-        <h2>2) Teacher & Parent Users</h2>
-        <h3>Teacher Creation</h3>
-        <div class="row">
-          <div><label>Teacher name</label><input id="teacher_name" placeholder="Mufti Tariq" /></div>
-          <div><label>Subject</label><input id="teacher_subject" placeholder="Tafseer" /></div>
-        </div>
-        <button id="add_teacher_btn">Add Teacher</button>
-        <h3>Parent User Link</h3>
-        <div class="row">
-          <div><label>Student ID</label><input id="parent_student_id" placeholder="1" /></div>
-          <div><label>Parent name</label><input id="parent_name" placeholder="Ali Khan" /></div>
-        </div>
-        <div class="row">
-          <div><label>Parent phone</label><input id="parent_phone" placeholder="+923009998877" /></div>
-          <div><label>Password (optional, default jamia123)</label><input id="parent_password" placeholder="jamia123" /></div>
-        </div>
-        <button id="link_parent_btn">Create/Link Parent User</button>
-        <button id="refresh_people_btn" class="secondary">Refresh Teachers & Parents</button>
-        <div id="people_status" class="status"></div>
-        <table>
-          <thead><tr><th>Teacher ID</th><th>Name</th><th>Subject</th></tr></thead>
-          <tbody id="teachers_table"><tr><td colspan="3" class="tiny">No teachers.</td></tr></tbody>
-        </table>
-        <table>
-          <thead><tr><th>Parent Username</th><th>Parent</th><th>Student</th></tr></thead>
-          <tbody id="parents_table"><tr><td colspan="3" class="tiny">No parent links.</td></tr></tbody>
-        </table>
-      </div>
+      <section class="grid-stats">
+        <div class="metric"><div class="label">Students</div><div class="value" id="sum_students">0</div></div>
+        <div class="metric"><div class="label">Teachers</div><div class="value" id="sum_teachers">0</div></div>
+        <div class="metric"><div class="label">Parent Users</div><div class="value" id="sum_parents">0</div></div>
+        <div class="metric"><div class="label">Pending Fee Records</div><div class="value" id="sum_pending_fees">0</div></div>
+        <div class="metric"><div class="label">Outstanding Fee</div><div class="value" id="sum_fee_balance">0</div></div>
+        <div class="metric"><div class="label">Today's Attendance</div><div class="value" id="sum_attendance">0/0</div></div>
+      </section>
 
-      <div class="card">
-        <h2>3) Fees Submission</h2>
-        <h3>Create Fee Charge</h3>
-        <div class="row-3">
-          <div><label>Student ID</label><input id="fee_student_id" placeholder="1" /></div>
-          <div><label>Fee month</label><input id="fee_month" placeholder="2026-03" /></div>
-          <div><label>Category</label><input id="fee_category" value="tuition" /></div>
-        </div>
-        <div class="row">
-          <div><label>Amount</label><input id="fee_amount" placeholder="3500" /></div>
-          <div><label>Due date</label><input id="fee_due_date" placeholder="2026-03-31" /></div>
-        </div>
-        <button id="add_fee_btn">Add Fee Record</button>
-        <h3>Record Payment</h3>
-        <div class="row-3">
-          <div><label>Fee ID</label><input id="pay_fee_id" placeholder="1" /></div>
-          <div><label>Amount</label><input id="pay_amount" placeholder="3500" /></div>
-          <div><label>Method</label><input id="pay_method" value="cash" /></div>
-        </div>
-        <button id="pay_fee_btn">Record Fee Payment</button>
-        <button id="refresh_fees_btn" class="secondary">Refresh Fees</button>
-        <div id="fees_status" class="status"></div>
-        <table>
-          <thead><tr><th>Fee ID</th><th>Student</th><th>Month</th><th>Status</th><th>Balance</th></tr></thead>
-          <tbody id="fees_table"><tr><td colspan="5" class="tiny">No fee records.</td></tr></tbody>
-        </table>
-      </div>
-    </div>
+      <section class="section">
+        <p class="small-note">
+          Default administrator login: <strong id="admin_hint_user">admin</strong> /
+          <strong id="admin_hint_password">admin123</strong>
+        </p>
+      </section>
 
-    <div class="grid" style="margin-top:12px;">
-      <div class="card">
-        <h2>4) Attendance (Students + Teachers)</h2>
-        <h3>Student Attendance Entry</h3>
-        <div class="row-3">
-          <div><label>Date</label><input id="att_student_day" placeholder="2026-03-24" /></div>
-          <div><label>Student ID</label><input id="att_student_id" placeholder="1" /></div>
-          <div><label>Present</label>
-            <select id="att_student_present"><option value="true">Present</option><option value="false">Absent</option></select>
+      <section class="section" id="admission">
+        <h3>Student Admission Management</h3>
+        <p class="meta">Register students from first admission with guardian details and class assignment.</p>
+        <div class="cards">
+          <div class="card">
+            <h4>New Admission</h4>
+            <div class="row2">
+              <div><label>Student full name</label><input id="student_full_name" /></div>
+              <div><label>Arabic name (optional)</label><input id="student_arabic_name" /></div>
+            </div>
+            <div class="row3">
+              <div><label>Class</label><input id="student_class_name" placeholder="Dars-e-Nizami 1st Year" /></div>
+              <div><label>Section</label><input id="student_section_name" placeholder="A" /></div>
+              <div><label>Gender</label><input id="student_gender" placeholder="male / female" /></div>
+            </div>
+            <div class="row2">
+              <div><label>Guardian name</label><input id="student_guardian_name" /></div>
+              <div><label>Guardian phone</label><input id="student_guardian_phone" /></div>
+            </div>
+            <div class="row2">
+              <div><label>Date of birth (optional)</label><input id="student_dob" placeholder="2014-10-04" /></div>
+              <div><label>Joined on (optional)</label><input id="student_joined_on" placeholder="2026-03-24" /></div>
+            </div>
+            <label>Address / notes</label>
+            <textarea id="student_address"></textarea>
+            <div class="actions">
+              <button id="student_add_btn">Admit Student</button>
+              <button class="alt" id="refresh_all_btn">Refresh Dashboard Data</button>
+            </div>
+            <div id="admission_status" class="status"></div>
+          </div>
+          <div class="card">
+            <h4>Students Registry</h4>
+            <table>
+              <thead><tr><th>Admission #</th><th>Name</th><th>Class</th><th>Guardian</th><th>Status</th></tr></thead>
+              <tbody id="students_table"><tr><td colspan="5">No students yet.</td></tr></tbody>
+            </table>
           </div>
         </div>
-        <button id="save_student_att_btn">Save Student Attendance</button>
-        <h3>Teacher Attendance Entry</h3>
-        <div class="row-3">
-          <div><label>Date</label><input id="att_teacher_day" placeholder="2026-03-24" /></div>
-          <div><label>Teacher ID</label><input id="att_teacher_id" placeholder="1" /></div>
-          <div><label>Present</label>
-            <select id="att_teacher_present"><option value="true">Present</option><option value="false">Absent</option></select>
+      </section>
+
+      <section class="section" id="people">
+        <h3>Faculty & Parent User Management</h3>
+        <div class="cards">
+          <div class="card">
+            <h4>Create Teacher</h4>
+            <div class="row2">
+              <div><label>Teacher full name</label><input id="teacher_full_name" /></div>
+              <div><label>Subject</label><input id="teacher_subject" /></div>
+            </div>
+            <div class="row2">
+              <div><label>Phone</label><input id="teacher_phone" /></div>
+              <div><label>Joined on (optional)</label><input id="teacher_joined_on" placeholder="2026-03-24" /></div>
+            </div>
+            <div class="actions">
+              <button id="teacher_add_btn">Add Teacher</button>
+            </div>
+            <div id="teacher_status" class="status"></div>
+            <table>
+              <thead><tr><th>Emp #</th><th>Name</th><th>Subject</th><th>Status</th></tr></thead>
+              <tbody id="teachers_table"><tr><td colspan="4">No teachers yet.</td></tr></tbody>
+            </table>
+          </div>
+          <div class="card">
+            <h4>Link Parent Account to Student</h4>
+            <div class="row2">
+              <div><label>Student ID</label><input id="parent_student_id" /></div>
+              <div><label>Parent name</label><input id="parent_name" /></div>
+            </div>
+            <div class="row3">
+              <div><label>Relation</label><input id="parent_relation" value="guardian" /></div>
+              <div><label>Phone</label><input id="parent_phone" /></div>
+              <div><label>Preferred username</label><input id="parent_username" /></div>
+            </div>
+            <div class="row2">
+              <div><label>Password (optional)</label><input id="parent_password" placeholder="jamia123" /></div>
+              <div></div>
+            </div>
+            <div class="actions">
+              <button id="parent_link_btn">Create / Link Parent</button>
+            </div>
+            <div id="parent_status" class="status"></div>
+            <table>
+              <thead><tr><th>Username</th><th>Parent</th><th>Student</th><th>Class</th></tr></thead>
+              <tbody id="parents_table"><tr><td colspan="4">No parent links yet.</td></tr></tbody>
+            </table>
           </div>
         </div>
-        <button id="save_teacher_att_btn">Save Teacher Attendance</button>
-        <button id="refresh_attendance_btn" class="secondary">Refresh Attendance</button>
-        <div id="attendance_status" class="status"></div>
-        <table>
-          <thead><tr><th>Day</th><th>Student</th><th>Class</th><th>Present</th></tr></thead>
-          <tbody id="student_attendance_table"><tr><td colspan="4" class="tiny">No attendance records.</td></tr></tbody>
-        </table>
-      </div>
+      </section>
 
-      <div class="card">
-        <h2>5) Paper Management & Scores</h2>
-        <h3>Create Paper</h3>
-        <div class="row">
-          <div><label>Title</label><input id="paper_title" placeholder="Mid Term Quran Paper" /></div>
-          <div><label>Subject</label><input id="paper_subject" placeholder="Quran" /></div>
+      <section class="section" id="fees">
+        <h3>Fees Submission & Accounting</h3>
+        <div class="cards">
+          <div class="card">
+            <h4>Create Fee Charge</h4>
+            <div class="row2">
+              <div><label>Student ID</label><input id="fee_student_id" /></div>
+              <div><label>Fee month</label><input id="fee_month" placeholder="2026-03" /></div>
+            </div>
+            <div class="row3">
+              <div><label>Category</label><input id="fee_category" value="tuition" /></div>
+              <div><label>Amount</label><input id="fee_amount" /></div>
+              <div><label>Due date</label><input id="fee_due_date" placeholder="2026-03-30" /></div>
+            </div>
+            <div class="actions"><button id="fee_add_btn">Create Fee Record</button></div>
+          </div>
+          <div class="card">
+            <h4>Record Fee Payment</h4>
+            <div class="row2">
+              <div><label>Fee ID</label><input id="fee_pay_id" /></div>
+              <div><label>Amount</label><input id="fee_pay_amount" /></div>
+            </div>
+            <div class="row2">
+              <div><label>Method</label><input id="fee_pay_method" value="cash" /></div>
+              <div><label>Reference</label><input id="fee_pay_reference" /></div>
+            </div>
+            <div class="actions"><button id="fee_pay_btn">Record Payment</button></div>
+            <div id="fees_status" class="status"></div>
+          </div>
         </div>
-        <div class="row-3">
-          <div><label>Class</label><input id="paper_class" placeholder="Hifz A" /></div>
-          <div><label>Term</label><input id="paper_term" placeholder="Mid Term" /></div>
-          <div><label>Max marks</label><input id="paper_max_marks" value="100" /></div>
-        </div>
-        <div class="row">
-          <div><label>Exam date</label><input id="paper_date" placeholder="2026-03-25" /></div>
-          <div><label>Type</label><input id="paper_type" value="written" /></div>
-        </div>
-        <button id="add_paper_btn">Create Paper</button>
-        <h3>Assign / Update Student Score</h3>
-        <div class="row-3">
-          <div><label>Paper ID</label><input id="score_paper_id" placeholder="1" /></div>
-          <div><label>Student ID</label><input id="score_student_id" placeholder="1" /></div>
-          <div><label>Marks</label><input id="score_marks" placeholder="85" /></div>
-        </div>
-        <button id="save_score_btn">Save Score</button>
-        <button id="refresh_papers_btn" class="secondary">Refresh Papers</button>
-        <div id="papers_status" class="status"></div>
         <table>
-          <thead><tr><th>ID</th><th>Title</th><th>Class</th><th>Date</th><th>Max</th></tr></thead>
-          <tbody id="papers_table"><tr><td colspan="5" class="tiny">No papers.</td></tr></tbody>
+          <thead><tr><th>ID</th><th>Student</th><th>Month</th><th>Category</th><th>Amount</th><th>Paid</th><th>Balance</th><th>Status</th></tr></thead>
+          <tbody id="fees_table"><tr><td colspan="8">No fee records yet.</td></tr></tbody>
         </table>
-      </div>
+      </section>
 
-      <div class="card">
-        <h2>6) Progress Report & Parent Portal</h2>
-        <h3>Generate / Publish Progress</h3>
-        <div class="row">
-          <div><label>Student ID</label><input id="report_student_id" placeholder="1" /></div>
-          <div><label>Generated by</label><input id="report_generated_by" value="admin" /></div>
+      <section class="section" id="attendance">
+        <h3>Student & Teacher Attendance</h3>
+        <div class="cards">
+          <div class="card">
+            <h4>Student Attendance Entry</h4>
+            <div class="row3">
+              <div><label>Date</label><input id="attendance_day" placeholder="2026-03-24" /></div>
+              <div><label>Student ID</label><input id="attendance_student_id" /></div>
+              <div><label>Present</label><select id="attendance_present"><option value="true">Present</option><option value="false">Absent</option></select></div>
+            </div>
+            <label>Remark</label><input id="attendance_remark" />
+            <div class="actions"><button id="attendance_save_btn">Save Student Attendance</button></div>
+          </div>
+          <div class="card">
+            <h4>Teacher Attendance Entry</h4>
+            <div class="row3">
+              <div><label>Date</label><input id="teacher_attendance_day" placeholder="2026-03-24" /></div>
+              <div><label>Teacher ID</label><input id="attendance_teacher_id" /></div>
+              <div><label>Present</label><select id="teacher_attendance_present"><option value="true">Present</option><option value="false">Absent</option></select></div>
+            </div>
+            <label>Remark</label><input id="teacher_attendance_remark" />
+            <div class="actions"><button id="teacher_attendance_save_btn">Save Teacher Attendance</button></div>
+            <div id="attendance_status" class="status"></div>
+          </div>
         </div>
-        <button id="view_report_btn">View Progress Report</button>
-        <button id="publish_report_btn">Publish for Parents</button>
-        <div id="report_status" class="status"></div>
-        <div class="portal"><pre id="report_preview" class="tiny">No report loaded.</pre></div>
-        <h3>Parent Portal Login</h3>
-        <div class="row">
-          <div><label>Username</label><input id="portal_username" placeholder="ali_jamia0001" /></div>
-          <div><label>Password</label><input id="portal_password" placeholder="jamia123" /></div>
+        <div class="cards">
+          <div class="card">
+            <h4>Student Attendance Log</h4>
+            <table>
+              <thead><tr><th>Date</th><th>Admission #</th><th>Name</th><th>Present</th><th>Remark</th></tr></thead>
+              <tbody id="attendance_table"><tr><td colspan="5">No records.</td></tr></tbody>
+            </table>
+          </div>
+          <div class="card">
+            <h4>Teacher Attendance Log</h4>
+            <table>
+              <thead><tr><th>Date</th><th>Emp #</th><th>Name</th><th>Present</th><th>Remark</th></tr></thead>
+              <tbody id="teacher_attendance_table"><tr><td colspan="5">No records.</td></tr></tbody>
+            </table>
+          </div>
         </div>
-        <button id="portal_login_btn">Open Parent Portal</button>
-        <div id="portal_status" class="status"></div>
-        <div class="portal"><pre id="portal_preview" class="tiny">Parent portal output appears here.</pre></div>
-      </div>
-    </div>
+      </section>
 
-    <div class="grid" style="margin-top:12px;">
-      <div class="card">
-        <h2>Extra Module: Hifz Progress</h2>
-        <div class="row-3">
-          <div><label>Student ID</label><input id="hifz_student_id" placeholder="1" /></div>
-          <div><label>Para no</label><input id="hifz_para" placeholder="1" /></div>
-          <div><label>Surah</label><input id="hifz_surah" placeholder="Al-Baqarah" /></div>
+      <section class="section" id="papers">
+        <h3>Papers Management & Exam Scores</h3>
+        <div class="cards">
+          <div class="card">
+            <h4>Create Exam Paper</h4>
+            <div class="row2">
+              <div><label>Title</label><input id="paper_title" /></div>
+              <div><label>Subject</label><input id="paper_subject" /></div>
+            </div>
+            <div class="row3">
+              <div><label>Class</label><input id="paper_class_name" /></div>
+              <div><label>Term</label><input id="paper_term_name" /></div>
+              <div><label>Max marks</label><input id="paper_max_marks" value="100" /></div>
+            </div>
+            <div class="row2">
+              <div><label>Exam date</label><input id="paper_exam_date" placeholder="2026-03-25" /></div>
+              <div><label>Paper type</label><input id="paper_type" value="written" /></div>
+            </div>
+            <div class="actions"><button id="paper_add_btn">Create Paper</button></div>
+          </div>
+          <div class="card">
+            <h4>Assign Student Score</h4>
+            <div class="row3">
+              <div><label>Paper ID</label><input id="paper_score_paper_id" /></div>
+              <div><label>Student ID</label><input id="paper_score_student_id" /></div>
+              <div><label>Marks</label><input id="paper_score_marks" /></div>
+            </div>
+            <label>Remarks</label><input id="paper_score_remarks" />
+            <div class="actions"><button id="paper_score_save_btn">Save Score</button></div>
+            <div id="papers_status" class="status"></div>
+          </div>
         </div>
-        <div class="row-3">
-          <div><label>Ayat from</label><input id="hifz_ayat_from" placeholder="1" /></div>
-          <div><label>Ayat to</label><input id="hifz_ayat_to" placeholder="5" /></div>
-          <div><label>Revision grade</label><input id="hifz_grade" placeholder="A" /></div>
+        <div class="cards">
+          <div class="card">
+            <h4>Papers Catalog</h4>
+            <table>
+              <thead><tr><th>ID</th><th>Title</th><th>Class</th><th>Term</th><th>Max</th></tr></thead>
+              <tbody id="papers_table"><tr><td colspan="5">No papers yet.</td></tr></tbody>
+            </table>
+          </div>
+          <div class="card">
+            <h4>Scores for Selected Paper</h4>
+            <table>
+              <thead><tr><th>Admission #</th><th>Student</th><th>Marks</th><th>Remarks</th></tr></thead>
+              <tbody id="paper_scores_table"><tr><td colspan="4">No scores yet.</td></tr></tbody>
+            </table>
+          </div>
         </div>
-        <button id="save_hifz_btn">Save Hifz Progress</button>
-        <button id="refresh_hifz_btn" class="secondary">Refresh Hifz Log</button>
-        <div id="hifz_status" class="status"></div>
-        <table>
-          <thead><tr><th>Student</th><th>Surah</th><th>Para</th><th>Ayat</th><th>Grade</th></tr></thead>
-          <tbody id="hifz_table"><tr><td colspan="5" class="tiny">No hifz records.</td></tr></tbody>
-        </table>
-      </div>
+      </section>
 
-      <div class="card">
-        <h2>Extra Module: Discipline & Announcements</h2>
-        <h3>Discipline Incident</h3>
-        <div class="row-3">
-          <div><label>Student ID</label><input id="incident_student_id" placeholder="1" /></div>
-          <div><label>Category</label><input id="incident_category" placeholder="late" /></div>
-          <div><label>Action</label><input id="incident_action" placeholder="warning" /></div>
+      <section class="section" id="reports">
+        <h3>Progress Reports & Parent Portal</h3>
+        <div class="cards">
+          <div class="card">
+            <h4>Generate Student Progress</h4>
+            <div class="row2">
+              <div><label>Student ID</label><input id="report_student_id" /></div>
+              <div><label>Generated by</label><input id="report_generated_by" value="admin" /></div>
+            </div>
+            <div class="actions">
+              <button id="progress_generate_btn">Generate Progress</button>
+              <button id="progress_publish_btn">Publish for Parents</button>
+            </div>
+            <div id="report_status" class="status"></div>
+            <div class="mono" id="progress_result">No report generated.</div>
+          </div>
+          <div class="card">
+            <h4>Parent Portal Access</h4>
+            <div class="row2">
+              <div><label>Username</label><input id="portal_username" /></div>
+              <div><label>Password</label><input id="portal_password" /></div>
+            </div>
+            <div class="actions"><button id="portal_login_btn">Login as Parent</button></div>
+            <div id="portal_status" class="status"></div>
+            <p class="small-note" id="portal_meta">No parent logged in.</p>
+            <table>
+              <thead><tr><th>Admission #</th><th>Student</th><th>Class</th><th>Relation</th></tr></thead>
+              <tbody id="portal_children_table"><tr><td colspan="4">No children linked.</td></tr></tbody>
+            </table>
+            <table>
+              <thead><tr><th>Admission #</th><th>Student</th><th>Average %</th><th>Fee Balance</th></tr></thead>
+              <tbody id="portal_reports_table"><tr><td colspan="4">No published reports.</td></tr></tbody>
+            </table>
+          </div>
         </div>
-        <label>Description</label>
-        <textarea id="incident_desc" placeholder="Came 25 minutes late without prior notice."></textarea>
-        <button id="save_incident_btn">Save Incident</button>
-        <h3>Announcement</h3>
-        <div class="row">
-          <div><label>Title</label><input id="notice_title" placeholder="Monthly Parent Meeting" /></div>
-          <div><label>Target</label><input id="notice_target" value="all" /></div>
-        </div>
-        <label>Body</label>
-        <textarea id="notice_body" placeholder="Parent meeting on Friday after Asr prayer."></textarea>
-        <button id="save_notice_btn">Publish Announcement</button>
-        <button id="refresh_notice_btn" class="secondary">Refresh Incidents & Notices</button>
-        <div id="notice_status" class="status"></div>
-        <table>
-          <thead><tr><th>Incident</th><th>Student</th><th>Category</th><th>Action</th></tr></thead>
-          <tbody id="incident_table"><tr><td colspan="4" class="tiny">No incidents.</td></tr></tbody>
-        </table>
-        <table>
-          <thead><tr><th>Announcement</th><th>Target</th><th>Date</th></tr></thead>
-          <tbody id="notice_table"><tr><td colspan="3" class="tiny">No announcements.</td></tr></tbody>
-        </table>
-      </div>
+      </section>
 
-      <div class="card">
-        <h2>Extra Module: Timetable</h2>
-        <div class="row-3">
-          <div><label>Class</label><input id="tt_class" placeholder="Hifz A" /></div>
-          <div><label>Day</label><input id="tt_day" placeholder="Monday" /></div>
-          <div><label>Period no</label><input id="tt_period" placeholder="1" /></div>
+      <section class="section" id="announcements">
+        <h3>Announcements</h3>
+        <div class="cards">
+          <div class="card">
+            <h4>Publish Announcement</h4>
+            <div class="row2">
+              <div><label>Title</label><input id="announce_title" /></div>
+              <div><label>Target Group</label><input id="announce_target" value="all" /></div>
+            </div>
+            <label>Message</label>
+            <textarea id="announce_body"></textarea>
+            <div class="actions"><button id="announce_add_btn">Publish Notice</button></div>
+            <div id="announce_status" class="status"></div>
+          </div>
+          <div class="card">
+            <h4>Recent Announcements</h4>
+            <table>
+              <thead><tr><th>ID</th><th>Title</th><th>Target</th><th>Date</th></tr></thead>
+              <tbody id="announcements_table"><tr><td colspan="4">No announcements.</td></tr></tbody>
+            </table>
+          </div>
         </div>
-        <div class="row-3">
-          <div><label>Subject</label><input id="tt_subject" placeholder="Nazra" /></div>
-          <div><label>Teacher</label><input id="tt_teacher" placeholder="Mufti Tariq" /></div>
-          <div><label>Start - End</label><input id="tt_time" placeholder="08:00-08:45" /></div>
-        </div>
-        <button id="save_tt_btn">Save Timetable Entry</button>
-        <button id="refresh_tt_btn" class="secondary">Refresh Timetable</button>
-        <div id="tt_status" class="status"></div>
-        <table>
-          <thead><tr><th>Class</th><th>Day</th><th>Period</th><th>Subject</th><th>Time</th></tr></thead>
-          <tbody id="tt_table"><tr><td colspan="5" class="tiny">No timetable entries.</td></tr></tbody>
-        </table>
-      </div>
-    </div>
+      </section>
 
-    <div class="grid" style="margin-top:12px;">
-      <div class="card">
-        <h2>Extra Module: Library</h2>
-        <h3>Add Book</h3>
-        <div class="row-3">
-          <div><label>Book code</label><input id="book_code" placeholder="BK-001" /></div>
-          <div><label>Title</label><input id="book_title" placeholder="Seerat-un-Nabi" /></div>
-          <div><label>Copies</label><input id="book_copies" value="2" /></div>
+      <section class="section" id="hifz">
+        <h3>Hifz Tracking & Discipline</h3>
+        <div class="cards">
+          <div class="card">
+            <h4>Hifz Progress Entry</h4>
+            <div class="row3">
+              <div><label>Student ID</label><input id="hifz_student_id" /></div>
+              <div><label>Surah</label><input id="hifz_surah" /></div>
+              <div><label>Para</label><input id="hifz_para" value="1" /></div>
+            </div>
+            <div class="row3">
+              <div><label>Ayat from</label><input id="hifz_from" value="1" /></div>
+              <div><label>Ayat to</label><input id="hifz_to" value="1" /></div>
+              <div><label>Revision grade</label><input id="hifz_grade" /></div>
+            </div>
+            <div class="row2">
+              <div><label>Teacher</label><input id="hifz_teacher" /></div>
+              <div></div>
+            </div>
+            <div class="actions"><button id="hifz_save_btn">Save Hifz Log</button></div>
+            <div id="hifz_status" class="status"></div>
+            <table>
+              <thead><tr><th>Student</th><th>Surah</th><th>Para</th><th>Ayat</th><th>Grade</th></tr></thead>
+              <tbody id="hifz_table"><tr><td colspan="5">No hifz logs.</td></tr></tbody>
+            </table>
+          </div>
+          <div class="card">
+            <h4>Discipline Incident Register</h4>
+            <div class="row3">
+              <div><label>Student ID</label><input id="incident_student_id" /></div>
+              <div><label>Category</label><input id="incident_category" /></div>
+              <div><label>Action taken</label><input id="incident_action" /></div>
+            </div>
+            <div class="row2">
+              <div><label>Reported by</label><input id="incident_reported_by" value="admin" /></div>
+              <div></div>
+            </div>
+            <label>Description</label><textarea id="incident_description"></textarea>
+            <div class="actions"><button id="incident_save_btn">Save Incident</button></div>
+            <div id="incident_status" class="status"></div>
+            <table>
+              <thead><tr><th>Student</th><th>Category</th><th>Action</th><th>Date</th></tr></thead>
+              <tbody id="incidents_table"><tr><td colspan="4">No incidents.</td></tr></tbody>
+            </table>
+          </div>
         </div>
-        <button id="add_book_btn">Add Book</button>
-        <h3>Issue / Return</h3>
-        <div class="row-3">
-          <div><label>Book ID</label><input id="issue_book_id" placeholder="1" /></div>
-          <div><label>Student ID</label><input id="issue_student_id" placeholder="1" /></div>
-          <div><label>Due date</label><input id="issue_due" placeholder="2026-04-01" /></div>
-        </div>
-        <button id="issue_book_btn">Issue Book</button>
-        <div class="row">
-          <div><label>Issue ID (for return)</label><input id="return_issue_id" placeholder="1" /></div>
-          <div><button id="return_book_btn">Return Book</button></div>
-        </div>
-        <button id="refresh_library_btn" class="secondary">Refresh Library</button>
-        <div id="library_status" class="status"></div>
-        <table>
-          <thead><tr><th>ID</th><th>Code</th><th>Title</th><th>Avail/Total</th></tr></thead>
-          <tbody id="books_table"><tr><td colspan="4" class="tiny">No books.</td></tr></tbody>
-        </table>
-      </div>
+      </section>
 
-      <div class="card">
-        <h2>Extra Module: Hostel</h2>
-        <h3>Add Room</h3>
-        <div class="row">
-          <div><label>Room code</label><input id="room_code" placeholder="A-01" /></div>
-          <div><label>Capacity</label><input id="room_capacity" value="3" /></div>
+      <section class="section" id="timetable">
+        <h3>Class Timetable Planning</h3>
+        <div class="cards">
+          <div class="card">
+            <h4>Create / Update Timetable Entry</h4>
+            <div class="row3">
+              <div><label>Class</label><input id="tt_class_name" /></div>
+              <div><label>Day</label><input id="tt_day_name" placeholder="Monday" /></div>
+              <div><label>Period no</label><input id="tt_period_no" value="1" /></div>
+            </div>
+            <div class="row2">
+              <div><label>Subject</label><input id="tt_subject" /></div>
+              <div><label>Teacher</label><input id="tt_teacher_name" /></div>
+            </div>
+            <div class="row2">
+              <div><label>Start time</label><input id="tt_start" placeholder="09:00" /></div>
+              <div><label>End time</label><input id="tt_end" placeholder="10:00" /></div>
+            </div>
+            <div class="actions"><button id="tt_save_btn">Save Timetable Entry</button></div>
+            <div id="timetable_status" class="status"></div>
+          </div>
+          <div class="card">
+            <h4>Timetable Overview</h4>
+            <table>
+              <thead><tr><th>Class</th><th>Day</th><th>Period</th><th>Subject</th><th>Teacher</th><th>Time</th></tr></thead>
+              <tbody id="timetable_table"><tr><td colspan="6">No timetable entries.</td></tr></tbody>
+            </table>
+          </div>
         </div>
-        <button id="add_room_btn">Add Room</button>
-        <h3>Allocate Student</h3>
-        <div class="row-3">
-          <div><label>Room ID</label><input id="alloc_room_id" placeholder="1" /></div>
-          <div><label>Student ID</label><input id="alloc_student_id" placeholder="1" /></div>
-          <div><label>Start date</label><input id="alloc_start" placeholder="2026-03-24" /></div>
+      </section>
+
+      <section class="section" id="library">
+        <h3>Library Management</h3>
+        <div class="cards">
+          <div class="card">
+            <h4>Add Book</h4>
+            <div class="row2">
+              <div><label>Book code</label><input id="book_code" /></div>
+              <div><label>Title</label><input id="book_title" /></div>
+            </div>
+            <div class="row3">
+              <div><label>Author</label><input id="book_author" /></div>
+              <div><label>Category</label><input id="book_category" /></div>
+              <div><label>Total copies</label><input id="book_copies" value="1" /></div>
+            </div>
+            <div class="actions"><button id="book_add_btn">Add Book</button></div>
+            <h4>Issue Book</h4>
+            <div class="row3">
+              <div><label>Book ID</label><input id="book_issue_book_id" /></div>
+              <div><label>Student ID</label><input id="book_issue_student_id" /></div>
+              <div><label>Due on</label><input id="book_issue_due_on" placeholder="2026-04-30" /></div>
+            </div>
+            <div class="actions"><button id="book_issue_btn">Issue Book</button></div>
+            <div id="library_status" class="status"></div>
+          </div>
+          <div class="card">
+            <h4>Books Inventory</h4>
+            <table>
+              <thead><tr><th>Code</th><th>Title</th><th>Author</th><th>Avail/Total</th></tr></thead>
+              <tbody id="books_table"><tr><td colspan="4">No books.</td></tr></tbody>
+            </table>
+            <h4>Issue Log</h4>
+            <table>
+              <thead><tr><th>ID</th><th>Book</th><th>Student</th><th>Status</th><th>Action</th></tr></thead>
+              <tbody id="issues_table"><tr><td colspan="5">No issues.</td></tr></tbody>
+            </table>
+          </div>
         </div>
-        <button id="allocate_room_btn">Allocate Room</button>
-        <button id="refresh_hostel_btn" class="secondary">Refresh Hostel</button>
-        <div id="hostel_status" class="status"></div>
-        <table>
-          <thead><tr><th>Room</th><th>Capacity</th><th>Occupied</th></tr></thead>
-          <tbody id="rooms_table"><tr><td colspan="3" class="tiny">No rooms.</td></tr></tbody>
-        </table>
-      </div>
-    </div>
+      </section>
+
+      <section class="section" id="hostel">
+        <h3>Hostel Room & Allocation Management</h3>
+        <div class="cards">
+          <div class="card">
+            <h4>Add Hostel Room</h4>
+            <div class="row2">
+              <div><label>Room code</label><input id="hostel_room_code" /></div>
+              <div><label>Capacity</label><input id="hostel_capacity" value="4" /></div>
+            </div>
+            <div class="actions"><button id="hostel_room_add_btn">Add Room</button></div>
+            <h4>Allocate Student</h4>
+            <div class="row3">
+              <div><label>Room ID</label><input id="hostel_room_id" /></div>
+              <div><label>Student ID</label><input id="hostel_student_id" /></div>
+              <div><label>Start on</label><input id="hostel_start_on" placeholder="2026-03-24" /></div>
+            </div>
+            <div class="actions"><button id="hostel_allocate_btn">Allocate Room</button></div>
+            <div id="hostel_status" class="status"></div>
+          </div>
+          <div class="card">
+            <h4>Rooms</h4>
+            <table>
+              <thead><tr><th>Room</th><th>Capacity</th><th>Occupied</th></tr></thead>
+              <tbody id="rooms_table"><tr><td colspan="3">No rooms.</td></tr></tbody>
+            </table>
+            <h4>Allocations</h4>
+            <table>
+              <thead><tr><th>Room</th><th>Student</th><th>Start</th><th>Status</th></tr></thead>
+              <tbody id="allocations_table"><tr><td colspan="4">No allocations.</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+    </main>
   </div>
+
   <script src="{{ url_for('static', filename='app.js') }}"></script>
 </body>
 </html>
