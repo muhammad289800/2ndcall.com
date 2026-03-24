@@ -1,2 +1,2 @@
-"""Non-VoIP number management app package."""
+"""Jamia LMS Flask application package."""
 

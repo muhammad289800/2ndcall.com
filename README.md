@@ -1,20 +1,39 @@
-# 2ndcall.com - Non-VoIP Number Manager
+# Jamia Ajmal ul Madaris LMS
 
-This repository contains the standalone app for managing non-VoIP virtual numbers.
+This repository contains a standalone Flask-based LMS for a Jamia / Mudrassa college
+with support for institutions up to around 500 students.
 
-## Features
+## Core Features
 
-- Search available numbers from provider APIs.
-- Buy and manage numbers in one dashboard.
-- Send SMS from owned numbers.
-- Start outbound calls from owned numbers.
-- Filter/purchase only non-VoIP numbers (line-type lookup based).
+- Student admission and student profile management.
+- Fees management (dues, partial payments, payment recording).
+- Student and teacher attendance management.
+- Papers/exams setup and marks entry.
+- Student progress report generation and publishing.
+- Parent user management with parent portal login access.
 
-## Providers
+## Additional Mudrassa Features
 
-- Telnyx (integrated)
-- Twilio (integrated)
-- Mock provider (local testing)
+- Hifz progress tracking (surah/para/ayat/revision grade).
+- Discipline incident tracking.
+- Class timetable management.
+- Announcements for students/parents/staff.
+- Library management (book stock, issue, return).
+- Hostel room allocation management.
+
+## Run locally
+
+1. Install dependencies:
+   - `pip install -r requirements.txt`
+2. Start:
+   - `python3 -m non_voip_numbers_app.app`
+3. Open:
+   - `http://127.0.0.1:5050`
+
+Default seeded admin credentials:
+
+- username: `admin`
+- password: `admin123`
 
 ## Run locally
 

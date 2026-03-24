@@ -2,9 +2,8 @@ import os
 from pathlib import Path
 from typing import Any
 
-from flask import Flask, Response, jsonify, render_template, request
+from flask import Flask, jsonify, render_template, request
 
-from .providers import ProviderError, build_providers
 from .storage import Storage
 
 
@@ -32,33 +31,7 @@ def create_app() -> Flask:
     load_local_env()
     app = Flask(__name__)
     app.config["JSON_SORT_KEYS"] = False
-
     storage = Storage()
-    providers = build_providers()
-
-    provider_pricing = {
-        "telnyx": {
-            "rank": 1,
-            "label": "Telnyx",
-            "estimated_local_number_monthly_usd": "from $1.00",
-            "notes": "Strong low-cost API option for SMS/voice workloads.",
-            "integrated_in_app": True,
-        },
-        "plivo": {
-            "rank": 2,
-            "label": "Plivo",
-            "estimated_local_number_monthly_usd": "from $0.50",
-            "notes": "Very low number rental cost; not wired in this build yet.",
-            "integrated_in_app": False,
-        },
-        "twilio": {
-            "rank": 3,
-            "label": "Twilio",
-            "estimated_local_number_monthly_usd": "about $1.15",
-            "notes": "Broad ecosystem and reliability, usually higher unit cost.",
-            "integrated_in_app": True,
-        },
-    }
 
     def payload() -> dict[str, Any]:
         if request.is_json:
@@ -78,427 +51,496 @@ def create_app() -> Flask:
         except (TypeError, ValueError):
             return default
 
-    def provider_or_400(provider_id: str):
-        provider = providers.get(provider_id.lower())
-        if not provider:
-            raise ValueError(f"Unsupported provider '{provider_id}'.")
-        if not provider.is_configured() and provider.provider_id != "mock":
-            raise ValueError(f"Provider '{provider_id}' is not configured.")
-        return provider
-
-    def ensure_wallet_can_cover(amount: float) -> None:
-        if amount <= 0:
-            return
-        balance = storage.get_wallet_balance()
-        if balance < amount:
-            raise ValueError(
-                f"Insufficient wallet balance. Need ${amount:.3f} but only have ${balance:.3f}. "
-                "Top up wallet first."
-            )
-
-    def estimate_action_cost(provider_id: str, action: str, minutes: float = 1.0) -> float:
-        provider = providers[provider_id]
-        profile = provider.pricing_profile()
-        if action == "number_order":
-            return parse_float(profile.get("number_monthly_usd"), 1.0)
-        if action == "sms":
-            return parse_float(profile.get("sms_outbound_usd"), 0.01)
-        if action == "call":
-            return parse_float(profile.get("call_per_min_usd"), 0.02) * max(1.0, minutes)
-        return 0.0
-
-    def resolve_provider_number_id(provider: Any, number_record: dict[str, Any]) -> str | None:
-        if number_record.get("provider_number_id"):
-            return str(number_record["provider_number_id"])
-        for item in provider.list_owned_numbers():
-            if item.get("phone_number") == number_record["phone_number"]:
-                return item.get("provider_number_id")
-        return None
-
     @app.get("/")
     def home():
-        pricing_rows = sorted(provider_pricing.values(), key=lambda item: item["rank"])
-        return render_template(
-            "index.html",
-            providers=providers,
-            pricing_rows=pricing_rows,
-        )
+        return render_template("index.html")
 
     @app.get("/health")
     def health():
-        return jsonify({"ok": True})
+        return jsonify({"ok": True, "service": "Jamia Ajmal ul Madaris LMS"})
 
-    @app.get("/api/providers")
-    def list_providers():
-        live = []
-        for provider in providers.values():
-            row = provider.provider_status()
-            if provider.provider_id in provider_pricing:
-                row.update(provider_pricing[provider.provider_id])
-            row["pricing_profile"] = provider.pricing_profile()
-            live.append(row)
-        return jsonify({"providers": live})
+    @app.get("/api/summary")
+    def summary():
+        return jsonify(storage.summary())
 
-    @app.get("/api/providers/balances")
-    def provider_balances():
-        balances: list[dict[str, Any]] = []
-        for provider in providers.values():
-            if provider.provider_id != "mock" and not provider.is_configured():
-                continue
-            try:
-                details = provider.account_balance()
-            except Exception as exc:  # pragma: no cover - external APIs
-                details = {"balance": None, "currency": "USD", "error": str(exc)}
-            balances.append(
-                {
-                    "provider": provider.provider_id,
-                    "label": provider.label,
-                    "account_balance": details,
-                }
+    @app.get("/api/students")
+    def students_list():
+        limit = parse_int(request.args.get("limit"), 500, 1, 1000)
+        status = request.args.get("status")
+        return jsonify({"students": storage.list_students(limit=limit, status=status)})
+
+    @app.post("/api/students")
+    def students_create():
+        body = payload()
+        full_name = str(body.get("full_name", "")).strip()
+        class_name = str(body.get("class_name", "")).strip()
+        guardian_name = str(body.get("guardian_name", "")).strip()
+        if not full_name or not class_name or not guardian_name:
+            return jsonify({"error": "full_name, class_name and guardian_name are required"}), 400
+        try:
+            student = storage.admit_student(
+                full_name=full_name,
+                class_name=class_name,
+                guardian_name=guardian_name,
+                guardian_phone=str(body.get("guardian_phone", "")),
+                section_name=str(body.get("section_name", "")),
+                arabic_name=str(body.get("arabic_name", "")),
+                gender=str(body.get("gender", "")),
+                dob=str(body.get("dob", "")),
+                address=str(body.get("address", "")),
+                notes=str(body.get("notes", "")),
+                joined_on=str(body.get("joined_on", "")).strip() or None,
             )
-        return jsonify({"balances": balances})
+            return jsonify({"student": student}), 201
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
 
-    @app.get("/api/wallet")
-    def wallet_summary():
-        limit = parse_int(request.args.get("limit"), 100, 1, 500)
-        return jsonify(
-            {
-                "balance": storage.get_wallet_balance(),
-                "transactions": storage.list_wallet_transactions(limit=limit),
-            }
-        )
+    @app.get("/api/users")
+    def users_list():
+        role = request.args.get("role")
+        limit = parse_int(request.args.get("limit"), 500, 1, 1000)
+        return jsonify({"users": storage.list_users(role=role, limit=limit)})
 
-    @app.post("/api/wallet/topup")
-    def wallet_topup():
+    @app.post("/api/users")
+    def users_create():
+        body = payload()
+        required = {"username", "full_name", "role", "password"}
+        if not required.issubset(set(body.keys())):
+            return jsonify({"error": "username, full_name, role and password are required"}), 400
+        try:
+            user = storage.create_user(
+                username=str(body.get("username", "")),
+                full_name=str(body.get("full_name", "")),
+                role=str(body.get("role", "")),
+                password=str(body.get("password", "")),
+                phone=str(body.get("phone", "")),
+                active=parse_bool(body.get("active"), True),
+            )
+            return jsonify({"user": user}), 201
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
+
+    @app.post("/api/auth/login")
+    def auth_login():
+        body = payload()
+        username = str(body.get("username", "")).strip()
+        password = str(body.get("password", "")).strip()
+        if not username or not password:
+            return jsonify({"error": "username and password are required"}), 400
+        user = storage.authenticate_user(username, password)
+        if not user:
+            return jsonify({"error": "invalid credentials"}), 401
+        return jsonify({"user": user})
+
+    @app.get("/api/parents")
+    def list_parents():
+        return jsonify({"parents": storage.list_parents_with_children()})
+
+    @app.post("/api/parents/link")
+    def link_parent():
+        body = payload()
+        student_id = parse_int(body.get("student_id"), 0, 1, 100000)
+        parent_name = str(body.get("parent_name", "")).strip()
+        if not student_id or not parent_name:
+            return jsonify({"error": "student_id and parent_name are required"}), 400
+        try:
+            parent = storage.create_or_link_parent(
+                student_id=student_id,
+                parent_name=parent_name,
+                parent_phone=str(body.get("parent_phone", "")),
+                relation=str(body.get("relation", "guardian")),
+                preferred_username=str(body.get("preferred_username", "")),
+                password=str(body.get("password", "")),
+            )
+            return jsonify({"parent_user": parent})
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
+
+    @app.post("/api/parent-portal")
+    def parent_portal():
+        body = payload()
+        username = str(body.get("username", "")).strip()
+        password = str(body.get("password", "")).strip()
+        if not username or not password:
+            return jsonify({"error": "username and password are required"}), 400
+        user = storage.authenticate_user(username, password)
+        if not user or user["role"] != "parent":
+            return jsonify({"error": "invalid parent credentials"}), 401
+        portal = storage.parent_portal(int(user["id"]))
+        return jsonify({"parent": user, "portal": portal})
+
+    @app.get("/api/teachers")
+    def teachers_list():
+        limit = parse_int(request.args.get("limit"), 200, 1, 1000)
+        return jsonify({"teachers": storage.list_teachers(limit=limit)})
+
+    @app.post("/api/teachers")
+    def teachers_create():
+        body = payload()
+        full_name = str(body.get("full_name", "")).strip()
+        subject = str(body.get("subject", "")).strip()
+        if not full_name:
+            return jsonify({"error": "full_name is required"}), 400
+        try:
+            teacher = storage.add_teacher(
+                full_name=full_name,
+                subject=subject,
+                phone=str(body.get("phone", "")),
+                joined_on=str(body.get("joined_on", "")).strip() or None,
+            )
+            return jsonify({"teacher": teacher}), 201
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
+
+    @app.get("/api/fees")
+    def fees_list():
+        student_id = parse_int(request.args.get("student_id"), 0, 0, 100000)
+        return jsonify({"fees": storage.list_fee_dues(student_id=student_id or None)})
+
+    @app.post("/api/fees")
+    def fees_create():
+        body = payload()
+        student_id = parse_int(body.get("student_id"), 0, 1, 100000)
+        fee_month = str(body.get("fee_month", "")).strip()
+        category = str(body.get("category", "tuition")).strip()
+        amount = parse_float(body.get("amount"), 0.0)
+        due_date = str(body.get("due_date", "")).strip()
+        if not student_id or not fee_month or not due_date:
+            return jsonify({"error": "student_id, fee_month and due_date are required"}), 400
+        try:
+            fee = storage.create_fee_charge(
+                student_id=student_id,
+                fee_month=fee_month,
+                category=category,
+                amount=amount,
+                due_date=due_date,
+            )
+            return jsonify({"fee": fee}), 201
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
+
+    @app.post("/api/fees/<int:fee_id>/pay")
+    def fees_pay(fee_id: int):
         body = payload()
         amount = parse_float(body.get("amount"), 0.0)
-        method = str(body.get("method", "manual")).strip() or "manual"
+        method = str(body.get("method", "cash")).strip()
+        if amount <= 0:
+            return jsonify({"error": "amount must be greater than zero"}), 400
         try:
-            result = storage.top_up_wallet(amount, method=method)
+            result = storage.record_fee_payment(
+                fee_id=fee_id,
+                amount=amount,
+                method=method,
+                reference=str(body.get("reference", "")),
+                recorded_by=str(body.get("recorded_by", "system")),
+            )
             return jsonify(result)
         except ValueError as exc:
             return jsonify({"error": str(exc)}), 400
 
-    @app.get("/api/numbers")
-    def list_numbers():
-        return jsonify({"numbers": storage.list_numbers()})
+    @app.get("/api/attendance/students")
+    def attendance_students_list():
+        day = request.args.get("day")
+        return jsonify({"attendance": storage.list_student_attendance(day=day)})
 
-    @app.post("/api/numbers/search")
-    def search_numbers():
+    @app.post("/api/attendance/students")
+    def attendance_students_record():
         body = payload()
-        provider_id = body.get("provider", "mock")
+        day = str(body.get("day", "")).strip()
+        entries = body.get("entries", [])
+        if not day or not isinstance(entries, list):
+            return jsonify({"error": "day and entries[] are required"}), 400
         try:
-            provider = provider_or_400(provider_id)
-            results = provider.search_available_numbers(
-                country=body.get("country", "US"),
-                area_code=body.get("area_code") or None,
-                limit=parse_int(body.get("limit"), 15, 1, 50),
-                require_sms=parse_bool(body.get("require_sms"), True),
-                require_voice=parse_bool(body.get("require_voice"), True),
-                non_voip_only=parse_bool(body.get("non_voip_only"), True),
+            result = storage.record_student_attendance(
+                day=day,
+                entries=entries,
+                recorded_by=str(body.get("recorded_by", "system")),
             )
-            return jsonify({"provider": provider_id, "results": results})
-        except (ProviderError, ValueError, TypeError) as exc:
+            return jsonify(result)
+        except (ValueError, KeyError, TypeError) as exc:
             return jsonify({"error": str(exc)}), 400
 
-    @app.post("/api/numbers/purchase")
-    def purchase_number():
-        body = payload()
-        provider_id = str(body.get("provider", "mock")).lower()
-        phone_number = str(body.get("phone_number", "")).strip()
-        if not phone_number:
-            return jsonify({"error": "phone_number is required."}), 400
-        non_voip_only = parse_bool(body.get("non_voip_only"), True)
+    @app.get("/api/attendance/teachers")
+    def attendance_teachers_list():
+        day = request.args.get("day")
+        return jsonify({"attendance": storage.list_teacher_attendance(day=day)})
 
+    @app.post("/api/attendance/teachers")
+    def attendance_teachers_record():
+        body = payload()
+        day = str(body.get("day", "")).strip()
+        entries = body.get("entries", [])
+        if not day or not isinstance(entries, list):
+            return jsonify({"error": "day and entries[] are required"}), 400
         try:
-            provider = provider_or_400(provider_id)
-            estimated_cost = estimate_action_cost(provider_id, "number_order")
-            ensure_wallet_can_cover(estimated_cost)
-            result = provider.purchase_number(phone_number)
-            line_type = str(result.get("line_type", "unknown")).lower()
-            if non_voip_only and line_type == "voip":
-                return jsonify({"error": "Provider classified this number as VoIP. Purchase blocked."}), 400
-            record = storage.upsert_number(
-                provider=provider_id,
-                phone_number=result.get("phone_number", phone_number),
-                provider_number_id=result.get("provider_number_id"),
-                line_type=line_type,
-                status="active",
-                metadata={"raw": result.get("raw", {})},
+            result = storage.record_teacher_attendance(
+                day=day,
+                entries=entries,
+                recorded_by=str(body.get("recorded_by", "system")),
             )
-            charged = storage.charge_wallet(
-                amount=estimated_cost,
-                tx_type="number_order",
-                provider=provider_id,
-                description=f"Ordered number {record['phone_number']}",
-                reference_id=str(record.get("provider_number_id") or ""),
+            return jsonify(result)
+        except (ValueError, KeyError, TypeError) as exc:
+            return jsonify({"error": str(exc)}), 400
+
+    @app.get("/api/papers")
+    def papers_list():
+        return jsonify({"papers": storage.list_papers()})
+
+    @app.post("/api/papers")
+    def papers_create():
+        body = payload()
+        title = str(body.get("title", "")).strip()
+        subject = str(body.get("subject", "")).strip()
+        class_name = str(body.get("class_name", "")).strip()
+        term_name = str(body.get("term_name", "")).strip()
+        max_marks = parse_float(body.get("max_marks"), 0.0)
+        exam_date = str(body.get("exam_date", "")).strip()
+        if not title or not subject or not class_name or not term_name or not exam_date:
+            return jsonify({"error": "title, subject, class_name, term_name and exam_date are required"}), 400
+        try:
+            paper = storage.create_paper(
+                title=title,
+                subject=subject,
+                class_name=class_name,
+                term_name=term_name,
+                max_marks=max_marks,
+                exam_date=exam_date,
+                paper_type=str(body.get("paper_type", "written")),
+                created_by=str(body.get("created_by", "admin")),
             )
+            return jsonify({"paper": paper}), 201
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
+
+    @app.get("/api/papers/<int:paper_id>/scores")
+    def paper_scores_list(paper_id: int):
+        return jsonify({"scores": storage.list_paper_scores(paper_id)})
+
+    @app.post("/api/papers/<int:paper_id>/scores")
+    def paper_scores_upsert(paper_id: int):
+        body = payload()
+        entries = body.get("entries", [])
+        if not isinstance(entries, list):
+            return jsonify({"error": "entries[] is required"}), 400
+        try:
+            result = storage.upsert_paper_scores(paper_id, entries=entries)
+            return jsonify(result)
+        except (ValueError, TypeError, KeyError) as exc:
+            return jsonify({"error": str(exc)}), 400
+
+    @app.get("/api/reports/students/<int:student_id>/progress")
+    def progress_report(student_id: int):
+        try:
+            report = storage.generate_progress_report(student_id)
+            return jsonify({"report": report})
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 404
+
+    @app.post("/api/reports/students/<int:student_id>/publish")
+    def publish_progress_report(student_id: int):
+        body = payload()
+        try:
+            published = storage.publish_parent_report(
+                student_id=student_id,
+                generated_by=str(body.get("generated_by", "system")),
+            )
+            return jsonify({"published_report": published})
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 404
+
+    @app.get("/api/announcements")
+    def announcements_list():
+        return jsonify({"announcements": storage.list_announcements()})
+
+    @app.post("/api/announcements")
+    def announcements_create():
+        body = payload()
+        title = str(body.get("title", "")).strip()
+        message = str(body.get("body", "")).strip()
+        target_group = str(body.get("target_group", "all")).strip()
+        if not title or not message:
+            return jsonify({"error": "title and body are required"}), 400
+        notice = storage.create_announcement(title=title, body=message, target_group=target_group)
+        return jsonify({"announcement": notice}), 201
+
+    @app.get("/api/library/books")
+    def library_books_list():
+        return jsonify({"books": storage.list_library_books()})
+
+    @app.post("/api/library/books")
+    def library_books_create():
+        body = payload()
+        code = str(body.get("book_code", "")).strip()
+        title = str(body.get("title", "")).strip()
+        copies = parse_int(body.get("total_copies"), 1, 1, 500)
+        if not code or not title:
+            return jsonify({"error": "book_code and title are required"}), 400
+        try:
+            book = storage.add_library_book(
+                book_code=code,
+                title=title,
+                author=str(body.get("author", "")),
+                category=str(body.get("category", "")),
+                total_copies=copies,
+            )
+            return jsonify({"book": book}), 201
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
+
+    @app.get("/api/library/issues")
+    def library_issues_list():
+        return jsonify({"issues": storage.list_library_issues()})
+
+    @app.post("/api/library/issues")
+    def library_issue_create():
+        body = payload()
+        book_id = parse_int(body.get("book_id"), 0, 1, 100000)
+        student_id = parse_int(body.get("student_id"), 0, 1, 100000)
+        due_on = str(body.get("due_on", "")).strip()
+        if not book_id or not student_id or not due_on:
+            return jsonify({"error": "book_id, student_id and due_on are required"}), 400
+        try:
+            issue = storage.issue_library_book(book_id=book_id, student_id=student_id, due_on=due_on)
+            return jsonify({"issue": issue}), 201
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
+
+    @app.post("/api/library/issues/<int:issue_id>/return")
+    def library_issue_return(issue_id: int):
+        try:
+            issue = storage.return_library_book(issue_id)
+            return jsonify({"issue": issue})
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
+
+    @app.get("/api/hostel/rooms")
+    def hostel_rooms_list():
+        return jsonify({"rooms": storage.list_hostel_rooms()})
+
+    @app.post("/api/hostel/rooms")
+    def hostel_rooms_create():
+        body = payload()
+        room_code = str(body.get("room_code", "")).strip()
+        capacity = parse_int(body.get("capacity"), 0, 1, 100)
+        if not room_code or not capacity:
+            return jsonify({"error": "room_code and capacity are required"}), 400
+        try:
+            room = storage.add_hostel_room(room_code=room_code, capacity=capacity)
+            return jsonify({"room": room}), 201
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
+
+    @app.get("/api/hostel/allocations")
+    def hostel_allocations_list():
+        return jsonify({"allocations": storage.list_hostel_allocations()})
+
+    @app.post("/api/hostel/allocations")
+    def hostel_allocate():
+        body = payload()
+        room_id = parse_int(body.get("room_id"), 0, 1, 100000)
+        student_id = parse_int(body.get("student_id"), 0, 1, 100000)
+        if not room_id or not student_id:
+            return jsonify({"error": "room_id and student_id are required"}), 400
+        try:
+            allocation = storage.allocate_hostel_room(
+                room_id=room_id,
+                student_id=student_id,
+                start_on=str(body.get("start_on", "")).strip() or None,
+            )
+            return jsonify({"allocation": allocation}), 201
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
+
+    @app.get("/api/hifz")
+    def hifz_list():
+        return jsonify({"hifz_logs": storage.list_hifz_progress()})
+
+    @app.post("/api/hifz")
+    def hifz_create():
+        body = payload()
+        student_id = parse_int(body.get("student_id"), 0, 1, 100000)
+        surah_name = str(body.get("surah_name", "")).strip()
+        para_no = parse_int(body.get("para_no"), 0, 1, 30)
+        ayat_from = parse_int(body.get("ayat_from"), 0, 1, 300)
+        ayat_to = parse_int(body.get("ayat_to"), 0, 1, 300)
+        if not student_id or not surah_name:
+            return jsonify({"error": "student_id and surah_name are required"}), 400
+        try:
+            log = storage.add_hifz_progress(
+                student_id=student_id,
+                surah_name=surah_name,
+                para_no=para_no,
+                ayat_from=ayat_from,
+                ayat_to=ayat_to,
+                revision_grade=str(body.get("revision_grade", "")),
+                teacher_name=str(body.get("teacher_name", "")),
+                recorded_on=str(body.get("recorded_on", "")).strip() or None,
+            )
+            return jsonify({"hifz_log": log}), 201
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
+
+    @app.get("/api/incidents")
+    def incidents_list():
+        return jsonify({"incidents": storage.list_incidents()})
+
+    @app.post("/api/incidents")
+    def incidents_create():
+        body = payload()
+        student_id = parse_int(body.get("student_id"), 0, 1, 100000)
+        category = str(body.get("category", "")).strip()
+        description = str(body.get("description", "")).strip()
+        if not student_id or not category or not description:
+            return jsonify({"error": "student_id, category and description are required"}), 400
+        try:
+            incident = storage.add_incident(
+                student_id=student_id,
+                category=category,
+                description=description,
+                action_taken=str(body.get("action_taken", "")),
+                reported_by=str(body.get("reported_by", "system")),
+                incident_on=str(body.get("incident_on", "")).strip() or None,
+            )
+            return jsonify({"incident": incident}), 201
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
+
+    @app.get("/api/timetable")
+    def timetable_list():
+        day_name = request.args.get("day_name")
+        return jsonify({"timetable": storage.list_timetable(day_name=day_name)})
+
+    @app.post("/api/timetable")
+    def timetable_create():
+        body = payload()
+        class_name = str(body.get("class_name", "")).strip()
+        day_name = str(body.get("day_name", "")).strip()
+        period_no = parse_int(body.get("period_no"), 0, 1, 20)
+        subject = str(body.get("subject", "")).strip()
+        start_time = str(body.get("start_time", "")).strip()
+        end_time = str(body.get("end_time", "")).strip()
+        if not class_name or not day_name or not period_no or not subject or not start_time or not end_time:
             return jsonify(
                 {
-                    "number": record,
-                    "wallet": charged,
-                    "charged_usd": estimated_cost,
-                    "warnings": result.get("warnings", []),
+                    "error": (
+                        "class_name, day_name, period_no, subject, "
+                        "start_time and end_time are required"
+                    )
                 }
-            )
-        except (ProviderError, ValueError) as exc:
-            return jsonify({"error": str(exc)}), 400
-
-    @app.post("/api/numbers/order")
-    def order_number():
-        # Alias for purchase to make "ordering numbers" explicit in API.
-        return purchase_number()
-
-    @app.post("/api/numbers/<int:number_id>/release")
-    def release_number(number_id: int):
-        number = storage.get_number(number_id)
-        if not number:
-            return jsonify({"error": f"Managed number {number_id} not found."}), 404
-        provider_id = number.get("provider")
+            ), 400
         try:
-            provider = provider_or_400(provider_id)
-            provider_number_id = resolve_provider_number_id(provider, number)
-            if not provider_number_id:
-                return jsonify({"error": "Could not resolve provider number ID for release."}), 400
-            response = provider.release_number(provider_number_id)
-            storage.remove_number(number_id)
-            return jsonify({"released": True, "response": response})
-        except (ProviderError, ValueError) as exc:
+            entry = storage.add_timetable_entry(
+                class_name=class_name,
+                day_name=day_name,
+                period_no=period_no,
+                subject=subject,
+                teacher_name=str(body.get("teacher_name", "")),
+                start_time=start_time,
+                end_time=end_time,
+            )
+            return jsonify({"timetable_entry": entry}), 201
+        except ValueError as exc:
             return jsonify({"error": str(exc)}), 400
-
-    @app.post("/api/numbers/sync")
-    def sync_owned_numbers():
-        body = payload()
-        provider_id = body.get("provider", "mock")
-        try:
-            provider = provider_or_400(provider_id)
-            imported = 0
-            for item in provider.list_owned_numbers():
-                phone_number = item.get("phone_number", "")
-                if not phone_number:
-                    continue
-                storage.upsert_number(
-                    provider=provider_id,
-                    phone_number=phone_number,
-                    provider_number_id=item.get("provider_number_id"),
-                    line_type=provider.lookup_line_type(phone_number),
-                    status=item.get("status", "active"),
-                    metadata={"synced": True},
-                )
-                imported += 1
-            return jsonify({"provider": provider_id, "imported": imported})
-        except (ProviderError, ValueError) as exc:
-            return jsonify({"error": str(exc)}), 400
-
-    @app.get("/api/messages")
-    def list_messages():
-        direction = request.args.get("direction")
-        limit = parse_int(request.args.get("limit"), 100, 1, 500)
-        return jsonify({"messages": storage.list_message_logs(limit=limit, direction=direction)})
-
-    @app.post("/api/messages/send")
-    def send_message():
-        body = payload()
-        provider_id = str(body.get("provider", "mock")).lower()
-        from_number = str(body.get("from_number", "")).strip()
-        to_number = str(body.get("to_number", "")).strip()
-        message = str(body.get("message", "")).strip()
-        if not from_number or not to_number or not message:
-            return jsonify({"error": "provider, from_number, to_number, and message are required."}), 400
-        try:
-            provider = provider_or_400(provider_id)
-            estimated_cost = estimate_action_cost(provider_id, "sms")
-            ensure_wallet_can_cover(estimated_cost)
-            result = provider.send_message(from_number, to_number, message)
-            storage.log_message(
-                provider=provider_id,
-                direction="outbound",
-                from_number=from_number,
-                to_number=to_number,
-                body=message,
-                status=result.get("status", "queued"),
-                provider_message_id=result.get("id"),
-                event_type="outbound_message",
-                response=result.get("raw"),
-            )
-            charged = storage.charge_wallet(
-                amount=estimated_cost,
-                tx_type="sms",
-                provider=provider_id,
-                description=f"SMS {from_number} -> {to_number}",
-                reference_id=str(result.get("id") or ""),
-            )
-            return jsonify({"message": result, "wallet": charged, "charged_usd": estimated_cost})
-        except (ProviderError, ValueError) as exc:
-            storage.log_message(
-                provider=provider_id,
-                direction="outbound",
-                from_number=from_number,
-                to_number=to_number,
-                body=message,
-                status="failed",
-                provider_message_id=None,
-                event_type="outbound_message",
-                response={"error": str(exc)},
-            )
-            return jsonify({"error": str(exc)}), 400
-
-    @app.get("/api/calls")
-    def list_calls():
-        direction = request.args.get("direction")
-        limit = parse_int(request.args.get("limit"), 100, 1, 500)
-        return jsonify({"calls": storage.list_call_logs(limit=limit, direction=direction)})
-
-    @app.post("/api/calls/start")
-    def start_call():
-        body = payload()
-        provider_id = str(body.get("provider", "mock")).lower()
-        from_number = str(body.get("from_number", "")).strip()
-        to_number = str(body.get("to_number", "")).strip()
-        say_text = str(body.get("say_text", "")).strip()
-        if not from_number or not to_number:
-            return jsonify({"error": "provider, from_number, and to_number are required."}), 400
-        try:
-            provider = provider_or_400(provider_id)
-            estimated_minutes = parse_float(body.get("estimated_minutes"), 1.0)
-            estimated_cost = estimate_action_cost(provider_id, "call", minutes=max(estimated_minutes, 1.0))
-            ensure_wallet_can_cover(estimated_cost)
-            result = provider.start_call(from_number, to_number, say_text)
-            storage.log_call(
-                provider=provider_id,
-                direction="outbound",
-                from_number=from_number,
-                to_number=to_number,
-                say_text=say_text,
-                status=result.get("status", "queued"),
-                provider_call_id=result.get("id"),
-                event_type="outbound_call",
-                response=result.get("raw"),
-            )
-            charged = storage.charge_wallet(
-                amount=estimated_cost,
-                tx_type="call",
-                provider=provider_id,
-                description=f"Call {from_number} -> {to_number}",
-                reference_id=str(result.get("id") or ""),
-            )
-            return jsonify({"call": result, "wallet": charged, "charged_usd": estimated_cost})
-        except (ProviderError, ValueError) as exc:
-            storage.log_call(
-                provider=provider_id,
-                direction="outbound",
-                from_number=from_number,
-                to_number=to_number,
-                say_text=say_text,
-                status="failed",
-                provider_call_id=None,
-                event_type="outbound_call",
-                response={"error": str(exc)},
-            )
-            return jsonify({"error": str(exc)}), 400
-
-    @app.post("/webhooks/twilio/message")
-    def twilio_message_webhook():
-        form = request.form.to_dict()
-        from_number = str(form.get("From", "")).strip()
-        to_number = str(form.get("To", "")).strip()
-        body_text = str(form.get("Body", "")).strip()
-        message_sid = str(form.get("MessageSid", "")).strip() or None
-        status = str(form.get("SmsStatus", form.get("MessageStatus", "received"))).strip() or "received"
-        storage.record_webhook_event("twilio", "message", form)
-        storage.log_message(
-            provider="twilio",
-            direction="inbound",
-            from_number=from_number,
-            to_number=to_number,
-            body=body_text,
-            status=status,
-            provider_message_id=message_sid,
-            event_type="inbound_message",
-            response=form,
-        )
-        return jsonify({"ok": True})
-
-    @app.post("/webhooks/twilio/voice")
-    def twilio_voice_webhook():
-        form = request.form.to_dict()
-        from_number = str(form.get("From", "")).strip()
-        to_number = str(form.get("To", "")).strip()
-        call_sid = str(form.get("CallSid", "")).strip() or None
-        status = str(form.get("CallStatus", "ringing")).strip() or "ringing"
-        storage.record_webhook_event("twilio", "voice", form)
-        storage.log_call(
-            provider="twilio",
-            direction="inbound",
-            from_number=from_number,
-            to_number=to_number,
-            say_text="inbound",
-            status=status,
-            provider_call_id=call_sid,
-            event_type="inbound_call",
-            response=form,
-        )
-        say_text = os.environ.get(
-            "TWILIO_INBOUND_SAY_TEXT",
-            "Thanks for calling. Your call was received by the 2ndCall app.",
-        )
-        twiml = f"<Response><Say>{say_text}</Say></Response>"
-        return Response(twiml, mimetype="text/xml")
-
-    @app.post("/webhooks/telnyx/events")
-    def telnyx_events_webhook():
-        body = request.get_json(silent=True) or {}
-        data = body.get("data", {})
-        event_type = str(data.get("event_type", body.get("event_type", "unknown"))).strip() or "unknown"
-        payload_data = data.get("payload", {})
-        storage.record_webhook_event("telnyx", event_type, body)
-
-        if "message" in event_type:
-            from_number = str(payload_data.get("from", {}).get("phone_number", "")).strip()
-            to_number = str(payload_data.get("to", [{}])[0].get("phone_number", "")).strip()
-            text = str(payload_data.get("text", "")).strip()
-            direction = "inbound" if "received" in event_type or "inbound" in event_type else "outbound"
-            storage.log_message(
-                provider="telnyx",
-                direction=direction,
-                from_number=from_number,
-                to_number=to_number,
-                body=text,
-                status=event_type,
-                provider_message_id=str(payload_data.get("id", "")) or None,
-                event_type=event_type,
-                response=body,
-            )
-
-        if "call" in event_type:
-            from_number = str(payload_data.get("from", "")).strip()
-            to_number = str(payload_data.get("to", "")).strip()
-            direction = "inbound" if "answered" in event_type or "initiated" in event_type else "outbound"
-            storage.log_call(
-                provider="telnyx",
-                direction=direction,
-                from_number=from_number,
-                to_number=to_number,
-                say_text="webhook",
-                status=event_type,
-                provider_call_id=str(payload_data.get("call_leg_id", "")) or None,
-                event_type=event_type,
-                response=body,
-            )
-
-        return jsonify({"received": True})
-
-    @app.get("/api/export")
-    def export_data():
-        return jsonify(
-            {
-                "numbers": storage.list_numbers(),
-                "wallet_balance": storage.get_wallet_balance(),
-                "messages": storage.list_message_logs(limit=200),
-                "calls": storage.list_call_logs(limit=200),
-                "pricing": provider_pricing,
-            }
-        )
 
     return app
 
@@ -507,8 +549,8 @@ app = create_app()
 
 
 if __name__ == "__main__":
-    host = os.environ.get("NUMBER_APP_HOST", "0.0.0.0")
-    port = int(os.environ.get("PORT", os.environ.get("NUMBER_APP_PORT", "5050")))
-    debug = parse_bool(os.environ.get("NUMBER_APP_DEBUG"), False)
+    host = os.environ.get("LMS_HOST", "0.0.0.0")
+    port = int(os.environ.get("PORT", os.environ.get("LMS_PORT", "5050")))
+    debug = parse_bool(os.environ.get("LMS_DEBUG"), False)
     app.run(host=host, port=port, debug=debug)
 

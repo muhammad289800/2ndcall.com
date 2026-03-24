@@ -3,269 +3,346 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Non-VoIP Number Manager</title>
+  <title>Jamia Ajmal ul Madaris LMS</title>
   <style>
     body { font-family: Arial, sans-serif; margin: 0; background: #f5f7fb; color: #1d2433; }
-    .container { max-width: 1220px; margin: 24px auto; padding: 0 16px; }
-    .header { margin-bottom: 18px; }
-    h1 { margin: 0 0 6px 0; font-size: 28px; }
-    .muted { color: #5b6578; font-size: 14px; }
-    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; }
-    .card { background: white; border-radius: 12px; padding: 16px; box-shadow: 0 2px 8px rgba(20, 30, 60, 0.08); }
-    .card h2 { margin-top: 0; font-size: 18px; }
-    label { display: block; font-size: 13px; margin-bottom: 5px; color: #4d5566; }
-    input, select, textarea, button { width: 100%; box-sizing: border-box; border-radius: 8px; border: 1px solid #c5cede; padding: 10px; font-size: 14px; }
-    textarea { min-height: 78px; resize: vertical; }
-    button { background: #1f64ff; color: white; border: none; cursor: pointer; font-weight: 600; }
+    .container { max-width: 1380px; margin: 20px auto; padding: 0 14px 30px 14px; }
+    h1 { margin: 0; font-size: 29px; }
+    h2 { margin: 0 0 8px 0; font-size: 18px; }
+    h3 { margin: 10px 0 8px 0; font-size: 15px; }
+    .muted { color: #5b6578; font-size: 13px; }
+    .hero { margin-bottom: 14px; background: linear-gradient(135deg, #19356f, #2553a8); color: white; border-radius: 12px; padding: 18px; }
+    .hero .meta { font-size: 13px; opacity: .9; margin-top: 4px; }
+    .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; margin-top: 12px; }
+    .stat { background: rgba(255,255,255,0.16); border: 1px solid rgba(255,255,255,0.22); border-radius: 8px; padding: 8px; }
+    .stat .num { font-size: 19px; font-weight: 700; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 12px; }
+    .card { background: white; border-radius: 10px; padding: 12px; box-shadow: 0 2px 8px rgba(20, 30, 60, 0.07); }
+    label { display: block; font-size: 12px; margin-bottom: 4px; color: #4d5566; }
+    input, select, textarea, button { width: 100%; box-sizing: border-box; border-radius: 7px; border: 1px solid #c5cede; padding: 8px; font-size: 13px; }
+    textarea { min-height: 70px; resize: vertical; }
+    button { background: #1f64ff; color: white; border: none; cursor: pointer; font-weight: 600; margin-top: 6px; }
     button:hover { background: #1149cb; }
-    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px; }
-    .row-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 10px; }
-    table { width: 100%; border-collapse: collapse; font-size: 13px; }
-    th, td { text-align: left; padding: 8px; border-bottom: 1px solid #e6ebf3; vertical-align: top; }
+    .secondary { background: #5f6c84; }
+    .secondary:hover { background: #4f5a70; }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px; }
+    .row-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 8px; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 7px; }
+    th, td { text-align: left; padding: 6px; border-bottom: 1px solid #e6ebf3; vertical-align: top; }
     th { background: #f6f8fc; }
-    .chip { display: inline-block; padding: 3px 8px; border-radius: 999px; font-size: 12px; background: #eef3ff; color: #2745a4; }
-    .danger { background: #b51f2f; }
-    .danger:hover { background: #8f1422; }
-    .status { margin-top: 8px; font-size: 13px; min-height: 18px; }
+    .status { margin-top: 6px; font-size: 12px; min-height: 16px; }
     .ok { color: #1a7f37; }
     .err { color: #b00020; }
-    .actions { display: flex; gap: 6px; }
-    .actions button { padding: 6px 8px; font-size: 12px; width: auto; }
-    .small { font-size: 12px; color: #596271; }
-    .balance { font-size: 24px; font-weight: 700; margin: 8px 0 12px 0; }
-    code { background: #eef1f7; padding: 2px 5px; border-radius: 4px; }
+    .tiny { font-size: 11px; color: #596271; }
+    .portal { background: #f8fbff; border: 1px dashed #cbd8ef; border-radius: 8px; padding: 8px; margin-top: 8px; }
+    code { background: #eef1f7; padding: 1px 4px; border-radius: 4px; }
   </style>
 </head>
 <body>
   <div class="container">
-    <div class="header">
-      <h1>Non-VoIP Virtual Number Manager</h1>
-      <div class="muted">Order numbers, send/receive SMS and calls, and control a prepaid wallet from one dashboard.</div>
+    <div class="hero">
+      <h1>Jamia Ajmal ul Madaris - LMS & ERP</h1>
+      <div class="meta">Admissions, fees, attendance, papers, progress reports, parent access, Hifz, discipline, timetable, library and hostel.</div>
+      <div class="stats">
+        <div class="stat"><div class="tiny">Students</div><div class="num" id="sum_students">0</div></div>
+        <div class="stat"><div class="tiny">Teachers</div><div class="num" id="sum_teachers">0</div></div>
+        <div class="stat"><div class="tiny">Parents (users)</div><div class="num" id="sum_parents">0</div></div>
+        <div class="stat"><div class="tiny">Pending fees</div><div class="num" id="sum_pending_fees">0</div></div>
+        <div class="stat"><div class="tiny">Outstanding fee</div><div class="num" id="sum_fee_balance">0</div></div>
+        <div class="stat"><div class="tiny">Attendance today</div><div class="num" id="sum_attendance">0/0</div></div>
+      </div>
     </div>
 
     <div class="grid">
       <div class="card">
-        <h2>Provider setup + low-cost ranking</h2>
-        <table>
-          <thead>
-            <tr>
-              <th>Rank</th>
-              <th>Provider</th>
-              <th>Est. local monthly</th>
-              <th>Integrated</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for details in pricing_rows %}
-            <tr>
-              <td>{{ details.rank }}</td>
-              <td>
-                <strong>{{ details.label }}</strong>
-                <div class="small">{{ details.notes }}</div>
-              </td>
-              <td>{{ details.estimated_local_number_monthly_usd }}</td>
-              <td>{% if details.integrated_in_app %}Yes{% else %}No{% endif %}</td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-        <p class="small">Enable real APIs with environment variables in `.env` (sample file included). Keep <code>mock</code> for safe local testing.</p>
-      </div>
-      <div class="card">
-        <h2>Wallet + provider balances</h2>
-        <div class="small">App wallet balance (required for ordering numbers/messages/calls)</div>
-        <div class="balance" id="wallet_balance">$0.00</div>
+        <h2>1) Student Admission</h2>
         <div class="row">
-          <div>
-            <label>Top-up amount (USD)</label>
-            <input id="topup_amount" value="20" />
-          </div>
-          <div>
-            <label>Method label</label>
-            <select id="topup_method">
-              <option value="manual">manual</option>
-              <option value="bank_transfer">bank_transfer</option>
-              <option value="card">card</option>
-            </select>
+          <div><label>Student name</label><input id="student_name" placeholder="Abdul Rahman" /></div>
+          <div><label>Arabic name (optional)</label><input id="student_arabic_name" placeholder="عبد الرحمن" /></div>
+        </div>
+        <div class="row">
+          <div><label>Class</label><input id="student_class" placeholder="Hifz A" /></div>
+          <div><label>Section</label><input id="student_section" placeholder="Morning" /></div>
+        </div>
+        <div class="row">
+          <div><label>Guardian name</label><input id="student_guardian" placeholder="Muhammad Ahmad" /></div>
+          <div><label>Guardian phone</label><input id="student_guardian_phone" placeholder="+923001112233" /></div>
+        </div>
+        <button id="add_student_btn">Admit Student</button>
+        <button id="refresh_students_btn" class="secondary">Refresh Students</button>
+        <div id="student_status" class="status"></div>
+        <table>
+          <thead><tr><th>ID</th><th>Admission</th><th>Name</th><th>Class</th><th>Guardian</th></tr></thead>
+          <tbody id="students_table"><tr><td colspan="5" class="tiny">No students.</td></tr></tbody>
+        </table>
+      </div>
+
+      <div class="card">
+        <h2>2) Teacher & Parent Users</h2>
+        <h3>Teacher Creation</h3>
+        <div class="row">
+          <div><label>Teacher name</label><input id="teacher_name" placeholder="Mufti Tariq" /></div>
+          <div><label>Subject</label><input id="teacher_subject" placeholder="Tafseer" /></div>
+        </div>
+        <button id="add_teacher_btn">Add Teacher</button>
+        <h3>Parent User Link</h3>
+        <div class="row">
+          <div><label>Student ID</label><input id="parent_student_id" placeholder="1" /></div>
+          <div><label>Parent name</label><input id="parent_name" placeholder="Ali Khan" /></div>
+        </div>
+        <div class="row">
+          <div><label>Parent phone</label><input id="parent_phone" placeholder="+923009998877" /></div>
+          <div><label>Password (optional, default jamia123)</label><input id="parent_password" placeholder="jamia123" /></div>
+        </div>
+        <button id="link_parent_btn">Create/Link Parent User</button>
+        <button id="refresh_people_btn" class="secondary">Refresh Teachers & Parents</button>
+        <div id="people_status" class="status"></div>
+        <table>
+          <thead><tr><th>Teacher ID</th><th>Name</th><th>Subject</th></tr></thead>
+          <tbody id="teachers_table"><tr><td colspan="3" class="tiny">No teachers.</td></tr></tbody>
+        </table>
+        <table>
+          <thead><tr><th>Parent Username</th><th>Parent</th><th>Student</th></tr></thead>
+          <tbody id="parents_table"><tr><td colspan="3" class="tiny">No parent links.</td></tr></tbody>
+        </table>
+      </div>
+
+      <div class="card">
+        <h2>3) Fees Submission</h2>
+        <h3>Create Fee Charge</h3>
+        <div class="row-3">
+          <div><label>Student ID</label><input id="fee_student_id" placeholder="1" /></div>
+          <div><label>Fee month</label><input id="fee_month" placeholder="2026-03" /></div>
+          <div><label>Category</label><input id="fee_category" value="tuition" /></div>
+        </div>
+        <div class="row">
+          <div><label>Amount</label><input id="fee_amount" placeholder="3500" /></div>
+          <div><label>Due date</label><input id="fee_due_date" placeholder="2026-03-31" /></div>
+        </div>
+        <button id="add_fee_btn">Add Fee Record</button>
+        <h3>Record Payment</h3>
+        <div class="row-3">
+          <div><label>Fee ID</label><input id="pay_fee_id" placeholder="1" /></div>
+          <div><label>Amount</label><input id="pay_amount" placeholder="3500" /></div>
+          <div><label>Method</label><input id="pay_method" value="cash" /></div>
+        </div>
+        <button id="pay_fee_btn">Record Fee Payment</button>
+        <button id="refresh_fees_btn" class="secondary">Refresh Fees</button>
+        <div id="fees_status" class="status"></div>
+        <table>
+          <thead><tr><th>Fee ID</th><th>Student</th><th>Month</th><th>Status</th><th>Balance</th></tr></thead>
+          <tbody id="fees_table"><tr><td colspan="5" class="tiny">No fee records.</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="grid" style="margin-top:12px;">
+      <div class="card">
+        <h2>4) Attendance (Students + Teachers)</h2>
+        <h3>Student Attendance Entry</h3>
+        <div class="row-3">
+          <div><label>Date</label><input id="att_student_day" placeholder="2026-03-24" /></div>
+          <div><label>Student ID</label><input id="att_student_id" placeholder="1" /></div>
+          <div><label>Present</label>
+            <select id="att_student_present"><option value="true">Present</option><option value="false">Absent</option></select>
           </div>
         </div>
-        <button id="topup_btn">Add funds</button>
-        <div id="wallet_status" class="status"></div>
-        <h3>Provider account balance (real API accounts)</h3>
-        <button id="refresh_provider_balances_btn" style="background:#5f6c84;">Refresh provider balances</button>
-        <table style="margin-top:8px;">
-          <thead>
-            <tr><th>Provider</th><th>Balance</th><th>Notes</th></tr>
-          </thead>
-          <tbody id="provider_balances">
-            <tr><td colspan="3" class="small">No data yet.</td></tr>
-          </tbody>
+        <button id="save_student_att_btn">Save Student Attendance</button>
+        <h3>Teacher Attendance Entry</h3>
+        <div class="row-3">
+          <div><label>Date</label><input id="att_teacher_day" placeholder="2026-03-24" /></div>
+          <div><label>Teacher ID</label><input id="att_teacher_id" placeholder="1" /></div>
+          <div><label>Present</label>
+            <select id="att_teacher_present"><option value="true">Present</option><option value="false">Absent</option></select>
+          </div>
+        </div>
+        <button id="save_teacher_att_btn">Save Teacher Attendance</button>
+        <button id="refresh_attendance_btn" class="secondary">Refresh Attendance</button>
+        <div id="attendance_status" class="status"></div>
+        <table>
+          <thead><tr><th>Day</th><th>Student</th><th>Class</th><th>Present</th></tr></thead>
+          <tbody id="student_attendance_table"><tr><td colspan="4" class="tiny">No attendance records.</td></tr></tbody>
         </table>
       </div>
-    </div>
 
-    <div class="card" style="margin-top: 16px;">
-      <h2>Webhook setup for receiving calls/messages</h2>
-      <div class="small">Configure these URLs in Twilio/Telnyx consoles so inbound messages and calls show up below.</div>
-      <ul class="small">
-        <li>Twilio SMS webhook: <code id="twilio_msg_webhook"></code></li>
-        <li>Twilio Voice webhook: <code id="twilio_voice_webhook"></code></li>
-        <li>Telnyx event webhook: <code id="telnyx_events_webhook"></code></li>
-      </ul>
-    </div>
-
-    <div class="grid" style="margin-top: 16px;">
       <div class="card">
-        <h2>Search & order numbers</h2>
+        <h2>5) Paper Management & Scores</h2>
+        <h3>Create Paper</h3>
         <div class="row">
-          <div>
-            <label>Provider</label>
-            <select id="provider"></select>
-          </div>
-          <div>
-            <label>Country</label>
-            <input id="country" value="US" />
-          </div>
+          <div><label>Title</label><input id="paper_title" placeholder="Mid Term Quran Paper" /></div>
+          <div><label>Subject</label><input id="paper_subject" placeholder="Quran" /></div>
         </div>
         <div class="row-3">
-          <div>
-            <label>Area code (optional)</label>
-            <input id="area_code" placeholder="212" />
-          </div>
-          <div>
-            <label>Limit</label>
-            <input id="limit" value="10" />
-          </div>
-          <div>
-            <label>Non-VoIP only</label>
-            <select id="non_voip_only">
-              <option value="true">true</option>
-              <option value="false">false</option>
-            </select>
-          </div>
+          <div><label>Class</label><input id="paper_class" placeholder="Hifz A" /></div>
+          <div><label>Term</label><input id="paper_term" placeholder="Mid Term" /></div>
+          <div><label>Max marks</label><input id="paper_max_marks" value="100" /></div>
         </div>
         <div class="row">
-          <div>
-            <label>Require SMS</label>
-            <select id="require_sms">
-              <option value="true">true</option>
-              <option value="false">false</option>
-            </select>
-          </div>
-          <div>
-            <label>Require Voice</label>
-            <select id="require_voice">
-              <option value="true">true</option>
-              <option value="false">false</option>
-            </select>
-          </div>
+          <div><label>Exam date</label><input id="paper_date" placeholder="2026-03-25" /></div>
+          <div><label>Type</label><input id="paper_type" value="written" /></div>
         </div>
-        <button id="search_btn">Search numbers</button>
-        <div id="search_status" class="status"></div>
-      </div>
-      <div class="card">
-        <h2>Managed numbers</h2>
-        <button id="refresh_numbers_btn">Refresh managed numbers</button>
-        <button id="sync_provider_btn" style="margin-top:8px; background:#5f6c84;">Sync from selected provider</button>
-        <div id="numbers_status" class="status"></div>
+        <button id="add_paper_btn">Create Paper</button>
+        <h3>Assign / Update Student Score</h3>
+        <div class="row-3">
+          <div><label>Paper ID</label><input id="score_paper_id" placeholder="1" /></div>
+          <div><label>Student ID</label><input id="score_student_id" placeholder="1" /></div>
+          <div><label>Marks</label><input id="score_marks" placeholder="85" /></div>
+        </div>
+        <button id="save_score_btn">Save Score</button>
+        <button id="refresh_papers_btn" class="secondary">Refresh Papers</button>
+        <div id="papers_status" class="status"></div>
         <table>
-          <thead>
-            <tr>
-              <th>ID</th>
-              <th>Provider</th>
-              <th>Phone</th>
-              <th>Line type</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody id="managed_numbers">
-            <tr><td colspan="5" class="small">No managed numbers yet.</td></tr>
-          </tbody>
+          <thead><tr><th>ID</th><th>Title</th><th>Class</th><th>Date</th><th>Max</th></tr></thead>
+          <tbody id="papers_table"><tr><td colspan="5" class="tiny">No papers.</td></tr></tbody>
         </table>
       </div>
-    </div>
-
-    <div class="card" style="margin-top: 16px;">
-      <h2>Search results</h2>
-      <table>
-        <thead>
-          <tr>
-            <th>Phone number</th>
-            <th>Line type</th>
-            <th>Capabilities</th>
-            <th>Region</th>
-            <th>Monthly est.</th>
-            <th>Action</th>
-          </tr>
-        </thead>
-        <tbody id="search_results">
-          <tr><td colspan="6" class="small">No results yet.</td></tr>
-        </tbody>
-      </table>
-    </div>
-
-    <div class="grid" style="margin-top: 16px;">
-      <div class="card">
-        <h2>Send message (SMS)</h2>
-        <label>Provider</label>
-        <select id="msg_provider"></select>
-        <label style="margin-top:8px;">From number</label>
-        <select id="msg_from"></select>
-        <label style="margin-top:8px;">To number (E.164)</label>
-        <input id="msg_to" placeholder="+15551231234" />
-        <label style="margin-top:8px;">Message text</label>
-        <textarea id="msg_body" placeholder="Your message"></textarea>
-        <button id="send_msg_btn">Send message</button>
-        <div id="msg_status" class="status"></div>
-      </div>
 
       <div class="card">
-        <h2>Start outbound call</h2>
+        <h2>6) Progress Report & Parent Portal</h2>
+        <h3>Generate / Publish Progress</h3>
         <div class="row">
-          <div>
-            <label>Provider</label>
-            <select id="call_provider"></select>
-          </div>
-          <div>
-            <label>From number</label>
-            <select id="call_from"></select>
-          </div>
+          <div><label>Student ID</label><input id="report_student_id" placeholder="1" /></div>
+          <div><label>Generated by</label><input id="report_generated_by" value="admin" /></div>
         </div>
-        <label>To number (E.164)</label>
-        <input id="call_to" placeholder="+15551231234" />
-        <label style="margin-top:8px;">Estimated minutes (for wallet reserve)</label>
-        <input id="call_minutes" value="1" />
-        <label style="margin-top:8px;">Call script / spoken text (Twilio uses this directly)</label>
-        <textarea id="call_text" placeholder="This is a test call from the number manager app."></textarea>
-        <button id="start_call_btn">Start call</button>
-        <div id="call_status" class="status"></div>
+        <button id="view_report_btn">View Progress Report</button>
+        <button id="publish_report_btn">Publish for Parents</button>
+        <div id="report_status" class="status"></div>
+        <div class="portal"><pre id="report_preview" class="tiny">No report loaded.</pre></div>
+        <h3>Parent Portal Login</h3>
+        <div class="row">
+          <div><label>Username</label><input id="portal_username" placeholder="ali_jamia0001" /></div>
+          <div><label>Password</label><input id="portal_password" placeholder="jamia123" /></div>
+        </div>
+        <button id="portal_login_btn">Open Parent Portal</button>
+        <div id="portal_status" class="status"></div>
+        <div class="portal"><pre id="portal_preview" class="tiny">Parent portal output appears here.</pre></div>
       </div>
     </div>
 
-    <div class="grid" style="margin-top: 16px;">
+    <div class="grid" style="margin-top:12px;">
       <div class="card">
-        <h2>Received messages inbox</h2>
-        <button id="refresh_inbound_messages_btn">Refresh inbound messages</button>
-        <table style="margin-top:8px;">
-          <thead>
-            <tr><th>Time</th><th>Provider</th><th>From</th><th>To</th><th>Body</th><th>Status</th></tr>
-          </thead>
-          <tbody id="inbound_messages">
-            <tr><td colspan="6" class="small">No inbound messages yet.</td></tr>
-          </tbody>
+        <h2>Extra Module: Hifz Progress</h2>
+        <div class="row-3">
+          <div><label>Student ID</label><input id="hifz_student_id" placeholder="1" /></div>
+          <div><label>Para no</label><input id="hifz_para" placeholder="1" /></div>
+          <div><label>Surah</label><input id="hifz_surah" placeholder="Al-Baqarah" /></div>
+        </div>
+        <div class="row-3">
+          <div><label>Ayat from</label><input id="hifz_ayat_from" placeholder="1" /></div>
+          <div><label>Ayat to</label><input id="hifz_ayat_to" placeholder="5" /></div>
+          <div><label>Revision grade</label><input id="hifz_grade" placeholder="A" /></div>
+        </div>
+        <button id="save_hifz_btn">Save Hifz Progress</button>
+        <button id="refresh_hifz_btn" class="secondary">Refresh Hifz Log</button>
+        <div id="hifz_status" class="status"></div>
+        <table>
+          <thead><tr><th>Student</th><th>Surah</th><th>Para</th><th>Ayat</th><th>Grade</th></tr></thead>
+          <tbody id="hifz_table"><tr><td colspan="5" class="tiny">No hifz records.</td></tr></tbody>
         </table>
       </div>
 
       <div class="card">
-        <h2>Received calls inbox</h2>
-        <button id="refresh_inbound_calls_btn">Refresh inbound calls</button>
-        <table style="margin-top:8px;">
-          <thead>
-            <tr><th>Time</th><th>Provider</th><th>From</th><th>To</th><th>Status</th><th>Call ID</th></tr>
-          </thead>
-          <tbody id="inbound_calls">
-            <tr><td colspan="6" class="small">No inbound calls yet.</td></tr>
-          </tbody>
+        <h2>Extra Module: Discipline & Announcements</h2>
+        <h3>Discipline Incident</h3>
+        <div class="row-3">
+          <div><label>Student ID</label><input id="incident_student_id" placeholder="1" /></div>
+          <div><label>Category</label><input id="incident_category" placeholder="late" /></div>
+          <div><label>Action</label><input id="incident_action" placeholder="warning" /></div>
+        </div>
+        <label>Description</label>
+        <textarea id="incident_desc" placeholder="Came 25 minutes late without prior notice."></textarea>
+        <button id="save_incident_btn">Save Incident</button>
+        <h3>Announcement</h3>
+        <div class="row">
+          <div><label>Title</label><input id="notice_title" placeholder="Monthly Parent Meeting" /></div>
+          <div><label>Target</label><input id="notice_target" value="all" /></div>
+        </div>
+        <label>Body</label>
+        <textarea id="notice_body" placeholder="Parent meeting on Friday after Asr prayer."></textarea>
+        <button id="save_notice_btn">Publish Announcement</button>
+        <button id="refresh_notice_btn" class="secondary">Refresh Incidents & Notices</button>
+        <div id="notice_status" class="status"></div>
+        <table>
+          <thead><tr><th>Incident</th><th>Student</th><th>Category</th><th>Action</th></tr></thead>
+          <tbody id="incident_table"><tr><td colspan="4" class="tiny">No incidents.</td></tr></tbody>
+        </table>
+        <table>
+          <thead><tr><th>Announcement</th><th>Target</th><th>Date</th></tr></thead>
+          <tbody id="notice_table"><tr><td colspan="3" class="tiny">No announcements.</td></tr></tbody>
+        </table>
+      </div>
+
+      <div class="card">
+        <h2>Extra Module: Timetable</h2>
+        <div class="row-3">
+          <div><label>Class</label><input id="tt_class" placeholder="Hifz A" /></div>
+          <div><label>Day</label><input id="tt_day" placeholder="Monday" /></div>
+          <div><label>Period no</label><input id="tt_period" placeholder="1" /></div>
+        </div>
+        <div class="row-3">
+          <div><label>Subject</label><input id="tt_subject" placeholder="Nazra" /></div>
+          <div><label>Teacher</label><input id="tt_teacher" placeholder="Mufti Tariq" /></div>
+          <div><label>Start - End</label><input id="tt_time" placeholder="08:00-08:45" /></div>
+        </div>
+        <button id="save_tt_btn">Save Timetable Entry</button>
+        <button id="refresh_tt_btn" class="secondary">Refresh Timetable</button>
+        <div id="tt_status" class="status"></div>
+        <table>
+          <thead><tr><th>Class</th><th>Day</th><th>Period</th><th>Subject</th><th>Time</th></tr></thead>
+          <tbody id="tt_table"><tr><td colspan="5" class="tiny">No timetable entries.</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="grid" style="margin-top:12px;">
+      <div class="card">
+        <h2>Extra Module: Library</h2>
+        <h3>Add Book</h3>
+        <div class="row-3">
+          <div><label>Book code</label><input id="book_code" placeholder="BK-001" /></div>
+          <div><label>Title</label><input id="book_title" placeholder="Seerat-un-Nabi" /></div>
+          <div><label>Copies</label><input id="book_copies" value="2" /></div>
+        </div>
+        <button id="add_book_btn">Add Book</button>
+        <h3>Issue / Return</h3>
+        <div class="row-3">
+          <div><label>Book ID</label><input id="issue_book_id" placeholder="1" /></div>
+          <div><label>Student ID</label><input id="issue_student_id" placeholder="1" /></div>
+          <div><label>Due date</label><input id="issue_due" placeholder="2026-04-01" /></div>
+        </div>
+        <button id="issue_book_btn">Issue Book</button>
+        <div class="row">
+          <div><label>Issue ID (for return)</label><input id="return_issue_id" placeholder="1" /></div>
+          <div><button id="return_book_btn">Return Book</button></div>
+        </div>
+        <button id="refresh_library_btn" class="secondary">Refresh Library</button>
+        <div id="library_status" class="status"></div>
+        <table>
+          <thead><tr><th>ID</th><th>Code</th><th>Title</th><th>Avail/Total</th></tr></thead>
+          <tbody id="books_table"><tr><td colspan="4" class="tiny">No books.</td></tr></tbody>
+        </table>
+      </div>
+
+      <div class="card">
+        <h2>Extra Module: Hostel</h2>
+        <h3>Add Room</h3>
+        <div class="row">
+          <div><label>Room code</label><input id="room_code" placeholder="A-01" /></div>
+          <div><label>Capacity</label><input id="room_capacity" value="3" /></div>
+        </div>
+        <button id="add_room_btn">Add Room</button>
+        <h3>Allocate Student</h3>
+        <div class="row-3">
+          <div><label>Room ID</label><input id="alloc_room_id" placeholder="1" /></div>
+          <div><label>Student ID</label><input id="alloc_student_id" placeholder="1" /></div>
+          <div><label>Start date</label><input id="alloc_start" placeholder="2026-03-24" /></div>
+        </div>
+        <button id="allocate_room_btn">Allocate Room</button>
+        <button id="refresh_hostel_btn" class="secondary">Refresh Hostel</button>
+        <div id="hostel_status" class="status"></div>
+        <table>
+          <thead><tr><th>Room</th><th>Capacity</th><th>Occupied</th></tr></thead>
+          <tbody id="rooms_table"><tr><td colspan="3" class="tiny">No rooms.</td></tr></tbody>
         </table>
       </div>
     </div>
