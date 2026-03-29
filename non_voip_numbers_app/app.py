@@ -576,6 +576,49 @@ def create_app() -> Flask:
 
         return jsonify({"received": True})
 
+    @app.get("/api/conversations")
+    @require_auth
+    def list_conversations():
+        """Return conversations grouped by contact number, most recent first."""
+        all_msgs = storage.list_message_logs(limit=1000)
+        convos: dict[str, dict[str, Any]] = {}
+        for msg in reversed(all_msgs):  # oldest first so last write = most recent
+            contact = msg["from_number"] if msg["direction"] == "inbound" else msg["to_number"]
+            my_num = msg["to_number"] if msg["direction"] == "inbound" else msg["from_number"]
+            if contact not in convos:
+                convos[contact] = {
+                    "contact": contact,
+                    "my_number": my_num,
+                    "provider": msg["provider"],
+                    "last_body": msg["body"],
+                    "last_time": msg["created_at"],
+                    "last_direction": msg["direction"],
+                    "message_count": 0,
+                }
+            convos[contact]["last_body"] = msg["body"]
+            convos[contact]["last_time"] = msg["created_at"]
+            convos[contact]["last_direction"] = msg["direction"]
+            convos[contact]["message_count"] += 1
+        result = sorted(convos.values(), key=lambda x: x["last_time"], reverse=True)
+        return jsonify({"conversations": result, "total": len(result)})
+
+    @app.post("/api/conversations/thread")
+    @require_auth
+    def get_conversation_thread():
+        """Return all messages with a specific contact number (POST avoids + encoding in URL)."""
+        body = payload()
+        contact_number = str(body.get("contact", "")).strip()
+        if not contact_number:
+            return jsonify({"error": "contact is required"}), 400
+        all_msgs = storage.list_message_logs(limit=500)
+        thread = [
+            m for m in all_msgs
+            if (m["direction"] == "inbound" and m["from_number"] == contact_number)
+            or (m["direction"] == "outbound" and m["to_number"] == contact_number)
+        ]
+        thread.sort(key=lambda x: x["created_at"])
+        return jsonify({"messages": thread, "contact": contact_number, "count": len(thread)})
+
     @app.get("/api/export")
     @require_auth
     def export_data():
