@@ -128,7 +128,11 @@ def create_app() -> Flask:
             raise ValueError(f"Provider '{provider_id}' is not configured. Set TELNYX_API_KEY.")
         return provider
 
-    def ensure_wallet_can_cover(amount: float) -> None:
+    def ensure_wallet_can_cover(amount: float, provider_id: str = "") -> None:
+        """Only enforce internal wallet for providers that don't manage their own billing.
+        Telnyx bills directly from the Telnyx account, so skip internal wallet checks."""
+        if provider_id.lower() == "telnyx":
+            return  # Telnyx bills the Telnyx account directly — no internal wallet needed
         if amount <= 0:
             return
         balance = storage.get_wallet_balance()
@@ -394,7 +398,7 @@ def create_app() -> Flask:
         try:
             provider = provider_or_400(provider_id)
             estimated_cost = estimate_action_cost(provider_id, "number_order")
-            ensure_wallet_can_cover(estimated_cost)
+            ensure_wallet_can_cover(estimated_cost, provider_id)
             result = provider.purchase_number(phone_number)
             line_type = str(result.get("line_type", "unknown")).lower()
             if non_voip_only and line_type == "voip":
@@ -407,18 +411,21 @@ def create_app() -> Flask:
                 status="active",
                 metadata={"raw": result.get("raw", {})},
             )
-            charged = storage.charge_wallet(
-                amount=estimated_cost,
-                tx_type="number_order",
-                provider=provider_id,
-                description=f"Ordered number {record['phone_number']}",
-                reference_id=str(record.get("provider_number_id") or ""),
-            )
+            wallet_info = None
+            if provider_id.lower() != "telnyx":
+                charged = storage.charge_wallet(
+                    amount=estimated_cost,
+                    tx_type="number_order",
+                    provider=provider_id,
+                    description=f"Ordered number {record['phone_number']}",
+                    reference_id=str(record.get("provider_number_id") or ""),
+                )
+                wallet_info = charged
             return jsonify(
                 {
                     "number": record,
-                    "wallet": charged,
-                    "charged_usd": estimated_cost,
+                    "wallet": wallet_info,
+                    "charged_usd": estimated_cost if provider_id.lower() != "telnyx" else 0,
                     "warnings": result.get("warnings", []),
                 }
             )
@@ -493,7 +500,7 @@ def create_app() -> Flask:
         try:
             provider = provider_or_400(provider_id)
             estimated_cost = estimate_action_cost(provider_id, "sms")
-            ensure_wallet_can_cover(estimated_cost)
+            ensure_wallet_can_cover(estimated_cost, provider_id)
             result = provider.send_message(from_number, to_number, message)
             storage.log_message(
                 provider=provider_id,
@@ -506,14 +513,16 @@ def create_app() -> Flask:
                 event_type="outbound_message",
                 response=result.get("raw"),
             )
-            charged = storage.charge_wallet(
-                amount=estimated_cost,
-                tx_type="sms",
-                provider=provider_id,
-                description=f"SMS {from_number} -> {to_number}",
-                reference_id=str(result.get("id") or ""),
-            )
-            return jsonify({"message": result, "wallet": charged, "charged_usd": estimated_cost})
+            if provider_id.lower() != "telnyx":
+                charged = storage.charge_wallet(
+                    amount=estimated_cost,
+                    tx_type="sms",
+                    provider=provider_id,
+                    description=f"SMS {from_number} -> {to_number}",
+                    reference_id=str(result.get("id") or ""),
+                )
+                return jsonify({"message": result, "wallet": charged, "charged_usd": estimated_cost})
+            return jsonify({"message": result, "charged_usd": 0})
         except (ProviderError, ValueError) as exc:
             storage.log_message(
                 provider=provider_id,
@@ -549,7 +558,7 @@ def create_app() -> Flask:
             provider = provider_or_400(provider_id)
             estimated_minutes = parse_float(body.get("estimated_minutes"), 1.0)
             estimated_cost = estimate_action_cost(provider_id, "call", minutes=max(estimated_minutes, 1.0))
-            ensure_wallet_can_cover(estimated_cost)
+            ensure_wallet_can_cover(estimated_cost, provider_id)
             result = provider.start_call(from_number, to_number, say_text)
             storage.log_call(
                 provider=provider_id,
@@ -562,14 +571,16 @@ def create_app() -> Flask:
                 event_type="outbound_call",
                 response=result.get("raw"),
             )
-            charged = storage.charge_wallet(
-                amount=estimated_cost,
-                tx_type="call",
-                provider=provider_id,
-                description=f"Call {from_number} -> {to_number}",
-                reference_id=str(result.get("id") or ""),
-            )
-            return jsonify({"call": result, "wallet": charged, "charged_usd": estimated_cost})
+            if provider_id.lower() != "telnyx":
+                charged = storage.charge_wallet(
+                    amount=estimated_cost,
+                    tx_type="call",
+                    provider=provider_id,
+                    description=f"Call {from_number} -> {to_number}",
+                    reference_id=str(result.get("id") or ""),
+                )
+                return jsonify({"call": result, "wallet": charged, "charged_usd": estimated_cost})
+            return jsonify({"call": result, "charged_usd": 0})
         except (ProviderError, ValueError) as exc:
             storage.log_call(
                 provider=provider_id,
