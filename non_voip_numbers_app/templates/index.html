@@ -1516,7 +1516,9 @@ document.getElementById("get-number-btn").addEventListener("click", () => {
   sec.style.display = sec.style.display === "none" ? "block" : "none";
   if (sec.style.display !== "none") {
     const sel = document.getElementById("ns-provider");
-    sel.innerHTML = S.providers.map(p =>
+    // Sort so configured providers (including mock) appear first
+    const sorted = [...S.providers].sort((a, b) => (b.configured ? 1 : 0) - (a.configured ? 1 : 0));
+    sel.innerHTML = sorted.map(p =>
       `<option value="${esc(p.provider)}">${esc(p.label)}${p.configured ? "" : " (not configured)"}</option>`
     ).join("");
     sec.scrollIntoView({ behavior:"smooth" });
@@ -1538,7 +1540,11 @@ document.getElementById("ns-search-btn").addEventListener("click", async () => {
     S.searchResults = d.results || [];
     setStatus("ns-status", `Found ${S.searchResults.length} numbers.`);
     renderSearchResults();
-  } catch(e) { setStatus("ns-status", e.message, true); }
+  } catch(e) {
+    S.searchResults = [];
+    renderSearchResults();
+    setStatus("ns-status", e.message, true);
+  }
 });
 
 function renderSearchResults() {
