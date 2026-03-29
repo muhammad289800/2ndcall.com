@@ -1,5 +1,7 @@
+import hashlib
 import json
 import os
+import secrets
 import sqlite3
 from datetime import datetime, timezone
 from typing import Any
@@ -111,8 +113,22 @@ class Storage:
                 )
                 """
             )
-
-            # Lightweight migrations for existing databases.
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS users (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    email TEXT NOT NULL UNIQUE,
+                    name TEXT DEFAULT '',
+                    password_hash TEXT NOT NULL,
+                    role TEXT DEFAULT 'user',
+                    avatar_color TEXT DEFAULT '#1f6feb',
+                    created_at TEXT NOT NULL,
+                    last_login TEXT,
+                    last_seen TEXT
+                )
+                """
+            )
+            # Lightweight migrations
             self._ensure_column(conn, "message_logs", "direction", "TEXT NOT NULL DEFAULT 'outbound'")
             self._ensure_column(conn, "message_logs", "event_type", "TEXT DEFAULT ''")
             self._ensure_column(conn, "call_logs", "direction", "TEXT NOT NULL DEFAULT 'outbound'")
@@ -436,4 +452,107 @@ class Storage:
             reference_id=reference_id,
         )
         return {"transaction": tx, "balance": self.get_wallet_balance()}
+
+    # ── User / Auth ────────────────────────────────────────────────────────
+
+    @staticmethod
+    def hash_password(password: str) -> str:
+        salt = secrets.token_hex(16)
+        dk = hashlib.pbkdf2_hmac("sha256", password.encode(), salt.encode(), 260_000)
+        return f"pbkdf2:{salt}:{dk.hex()}"
+
+    @staticmethod
+    def verify_password(password: str, stored_hash: str) -> bool:
+        try:
+            _, salt, dk_hex = stored_hash.split(":")
+            dk = hashlib.pbkdf2_hmac("sha256", password.encode(), salt.encode(), 260_000)
+            return secrets.compare_digest(dk.hex(), dk_hex)
+        except Exception:
+            return False
+
+    _AVATAR_COLORS = [
+        "#1f6feb","#3fb950","#d29922","#a371f7",
+        "#f85149","#58a6ff","#56d364","#e3b341",
+    ]
+
+    def _avatar_color_for_email(self, email: str) -> str:
+        h = 0
+        for c in email:
+            h = (h * 31 + ord(c)) & 0xFFFFFF
+        return self._AVATAR_COLORS[abs(h) % len(self._AVATAR_COLORS)]
+
+    def create_user(self, email: str, name: str, password: str, role: str = "user") -> dict[str, Any]:
+        now = utc_now()
+        pw_hash = self.hash_password(password)
+        color = self._avatar_color_for_email(email)
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO users (email, name, password_hash, role, avatar_color, created_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (email.lower().strip(), name.strip(), pw_hash, role, color, now),
+            )
+        return self.get_user_by_email(email)  # type: ignore[return-value]
+
+    def get_user_by_email(self, email: str) -> dict[str, Any] | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT id,email,name,role,avatar_color,created_at,last_login,last_seen FROM users WHERE email=?",
+                (email.lower().strip(),),
+            ).fetchone()
+        return dict(row) if row else None
+
+    def get_user_by_id(self, user_id: int) -> dict[str, Any] | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT id,email,name,role,avatar_color,created_at,last_login,last_seen FROM users WHERE id=?",
+                (user_id,),
+            ).fetchone()
+        return dict(row) if row else None
+
+    def get_user_password_hash(self, email: str) -> str | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT password_hash FROM users WHERE email=?",
+                (email.lower().strip(),),
+            ).fetchone()
+        return row["password_hash"] if row else None
+
+    def touch_user_login(self, user_id: int) -> None:
+        now = utc_now()
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE users SET last_login=?, last_seen=? WHERE id=?",
+                (now, now, user_id),
+            )
+
+    def touch_user_seen(self, user_id: int) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE users SET last_seen=? WHERE id=?",
+                (utc_now(), user_id),
+            )
+
+    def update_user_profile(self, user_id: int, name: str) -> dict[str, Any] | None:
+        with self._connect() as conn:
+            conn.execute("UPDATE users SET name=? WHERE id=?", (name.strip(), user_id))
+        return self.get_user_by_id(user_id)
+
+    def change_user_password(self, user_id: int, new_password: str) -> None:
+        pw_hash = self.hash_password(new_password)
+        with self._connect() as conn:
+            conn.execute("UPDATE users SET password_hash=? WHERE id=?", (pw_hash, user_id))
+
+    def list_users(self) -> list[dict[str, Any]]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT id,email,name,role,avatar_color,created_at,last_login,last_seen FROM users ORDER BY created_at DESC"
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def user_count(self) -> int:
+        with self._connect() as conn:
+            row = conn.execute("SELECT COUNT(*) AS cnt FROM users").fetchone()
+        return int(row["cnt"] or 0)
 

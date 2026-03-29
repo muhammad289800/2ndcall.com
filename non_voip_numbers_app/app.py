@@ -43,15 +43,19 @@ def create_app() -> Flask:
     _admin_token = os.environ.get("ADMIN_TOKEN", "").strip()
 
     def _token_ok(token: str) -> bool:
-        """Return True if token matches the configured ADMIN_TOKEN (constant-time compare)."""
         if not _admin_token:
-            return True  # no token set → open (dev/local mode only)
+            return True
         import hmac
         return hmac.compare_digest(_admin_token, token)
 
+    def _get_session_user() -> dict[str, Any] | None:
+        uid = session.get("user_id")
+        return storage.get_user_by_id(uid) if uid else None
+
     def _auth_ok() -> bool:
-        """Check API key header/param OR session login."""
         if session.get("authed"):
+            return True
+        if session.get("user_id"):
             return True
         token = (
             request.headers.get("X-Admin-Token")
@@ -60,11 +64,31 @@ def create_app() -> Flask:
         )
         return _token_ok(token)
 
+    def _is_admin() -> bool:
+        """True if authenticated via admin token OR user has role=admin."""
+        token = (
+            request.headers.get("X-Admin-Token")
+            or request.args.get("token")
+            or ""
+        )
+        if _token_ok(token) and token:
+            return True
+        u = _get_session_user()
+        return bool(u and u.get("role") == "admin")
+
     def require_auth(fn):
         @functools.wraps(fn)
         def wrapper(*args, **kwargs):
             if not _auth_ok():
-                return jsonify({"error": "Unauthorized. Provide a valid X-Admin-Token header."}), 401
+                return jsonify({"error": "Login required."}), 401
+            return fn(*args, **kwargs)
+        return wrapper
+
+    def require_admin(fn):
+        @functools.wraps(fn)
+        def wrapper(*args, **kwargs):
+            if not _is_admin():
+                return jsonify({"error": "Admin access required."}), 403
             return fn(*args, **kwargs)
         return wrapper
 
@@ -150,16 +174,51 @@ def create_app() -> Flask:
     def internal_error(e):
         return jsonify({"error": "Internal server error.", "detail": str(e)}), 500
 
-    # ── Auth routes ──────────────────────────────────────────────────────────
+    # ── Auth / User routes ───────────────────────────────────────────────────
+
+    @app.post("/api/auth/register")
+    def api_register():
+        body = payload()
+        email = str(body.get("email", "")).strip().lower()
+        name = str(body.get("name", "")).strip()
+        password = str(body.get("password", "")).strip()
+        if not email or not password:
+            return jsonify({"error": "email and password are required."}), 400
+        if len(password) < 6:
+            return jsonify({"error": "Password must be at least 6 characters."}), 400
+        if storage.get_user_by_email(email):
+            return jsonify({"error": "An account with this email already exists."}), 409
+        # First user gets admin role automatically
+        role = "admin" if storage.user_count() == 0 else "user"
+        user = storage.create_user(email, name or email.split("@")[0], password, role)
+        session["user_id"] = user["id"]
+        session.permanent = True
+        return jsonify({"ok": True, "user": user}), 201
 
     @app.post("/api/auth/login")
     def api_login():
         body = payload()
+        # Admin token login
         token = str(body.get("token", "")).strip()
-        if not _token_ok(token):
-            return jsonify({"error": "Invalid admin token."}), 401
-        session["authed"] = True
-        return jsonify({"ok": True})
+        if token:
+            if not _token_ok(token):
+                return jsonify({"error": "Invalid admin token."}), 401
+            session["authed"] = True
+            session.permanent = True
+            return jsonify({"ok": True, "mode": "admin_token"})
+        # Email + password login
+        email = str(body.get("email", "")).strip().lower()
+        password = str(body.get("password", "")).strip()
+        if not email or not password:
+            return jsonify({"error": "email and password are required."}), 400
+        pw_hash = storage.get_user_password_hash(email)
+        if not pw_hash or not Storage.verify_password(password, pw_hash):
+            return jsonify({"error": "Incorrect email or password."}), 401
+        user = storage.get_user_by_email(email)
+        session["user_id"] = user["id"]
+        session.permanent = True
+        storage.touch_user_login(user["id"])
+        return jsonify({"ok": True, "user": user, "mode": "email"})
 
     @app.post("/api/auth/logout")
     def api_logout():
@@ -169,10 +228,64 @@ def create_app() -> Flask:
     @app.get("/api/auth/status")
     def api_auth_status():
         token_configured = bool(_admin_token)
+        u = _get_session_user()
+        if u:
+            storage.touch_user_seen(u["id"])
         return jsonify({
             "authed": _auth_ok(),
             "token_required": token_configured,
+            "user": u,
+            "is_admin": _is_admin(),
         })
+
+    @app.get("/api/auth/me")
+    @require_auth
+    def api_me():
+        u = _get_session_user()
+        if not u:
+            return jsonify({"error": "Not a user session (admin token only)."}), 400
+        return jsonify({"user": u})
+
+    @app.patch("/api/auth/profile")
+    @require_auth
+    def api_update_profile():
+        u = _get_session_user()
+        if not u:
+            return jsonify({"error": "Not a user session."}), 400
+        body = payload()
+        name = str(body.get("name", "")).strip()
+        if not name:
+            return jsonify({"error": "name is required."}), 400
+        updated = storage.update_user_profile(u["id"], name)
+        return jsonify({"ok": True, "user": updated})
+
+    @app.post("/api/auth/change-password")
+    @require_auth
+    def api_change_password():
+        u = _get_session_user()
+        if not u:
+            return jsonify({"error": "Not a user session."}), 400
+        body = payload()
+        current = str(body.get("current_password", "")).strip()
+        new_pw = str(body.get("new_password", "")).strip()
+        if not current or not new_pw:
+            return jsonify({"error": "current_password and new_password are required."}), 400
+        pw_hash = storage.get_user_password_hash(u["email"])
+        if not Storage.verify_password(current, pw_hash or ""):
+            return jsonify({"error": "Current password is incorrect."}), 401
+        if len(new_pw) < 6:
+            return jsonify({"error": "New password must be at least 6 characters."}), 400
+        storage.change_user_password(u["id"], new_pw)
+        return jsonify({"ok": True})
+
+    @app.get("/api/admin/users")
+    @require_admin
+    def api_admin_users():
+        users = storage.list_users()
+        # Strip password hashes
+        for u in users:
+            u.pop("password_hash", None)
+        return jsonify({"users": users, "total": len(users)})
 
     # ── Main routes ──────────────────────────────────────────────────────────
 

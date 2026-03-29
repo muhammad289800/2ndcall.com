@@ -44,10 +44,12 @@
     .login-card input {
       width: 100%; padding: 13px 16px; border-radius: 10px;
       border: 1px solid var(--border); background: var(--surface2); color: var(--text);
-      font-size: 15px; margin-bottom: 12px; outline: none; text-align: center; letter-spacing: 3px;
+      font-size: 15px; margin-bottom: 12px; outline: none; box-sizing: border-box; text-align: left;
     }
     .login-card input:focus { border-color: var(--accent); }
-    .login-card input::placeholder { letter-spacing: 0; }
+    .login-card input::placeholder { letter-spacing: 0; color: var(--muted); }
+    #login-token { letter-spacing: 3px; text-align: center; }
+    #login-token::placeholder { letter-spacing: 0; }
     .btn-login {
       width: 100%; padding: 13px; border-radius: 10px; border: none;
       background: var(--accent); color: white; font-size: 15px; font-weight: 700;
@@ -56,6 +58,20 @@
     .btn-login:hover { background: var(--accent-h); }
     .login-hint { color: var(--muted2); font-size: 12px; margin-top: 16px; }
     .login-err { color: var(--red); font-size: 13px; margin-top: 10px; min-height: 16px; }
+
+    /* ── Profile ── */
+    .profile-stat { text-align:center; }
+    .chip { display:inline-block; padding:2px 10px; border-radius:20px; font-size:11px; font-weight:600; background:var(--surface2); color:var(--muted); border:1px solid var(--border); }
+    .chip-blue { background:rgba(31,111,235,.15); color:var(--accent-h); border-color:rgba(31,111,235,.3); }
+    .chip-green { background:rgba(63,185,80,.15); color:var(--green); border-color:rgba(63,185,80,.3); }
+    .chip-gray { background:var(--surface2); color:var(--muted); }
+    .btn-text { background:none; border:none; cursor:pointer; font-size:13px; padding:4px 0; }
+    .btn-text.danger { color:var(--red); }
+    .status-line { font-size:13px; margin-top:4px; min-height:16px; }
+    .admin-user-row { display:flex; align-items:center; gap:12px; padding:12px 18px; border-bottom:1px solid var(--border); }
+    .admin-user-info { flex:1; min-width:0; }
+    .admin-user-name { font-size:14px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .admin-user-email { font-size:12px; color:var(--muted); }
 
     /* ── App Shell ── */
     #app {
@@ -553,15 +569,58 @@
 </head>
 <body>
 
-<!-- ── Login ── -->
+<!-- ── Login / Register ── -->
 <div id="login-screen">
-  <div class="login-card animate-in">
+  <!-- Login card -->
+  <div class="login-card animate-in" id="login-card">
     <div class="login-logo">2nd<span>Call</span></div>
-    <div class="login-sub">Your virtual phone — powered by you</div>
-    <input type="password" id="login-token" placeholder="Enter admin token" autocomplete="current-password" />
-    <button class="btn-login" id="login-btn">Sign In</button>
-    <div class="login-hint" id="login-open-hint" style="display:none">No token set — tap Sign In to continue.</div>
+    <div class="login-sub">Virtual Phone — Sign in to continue</div>
+
+    <div style="display:flex;background:var(--surface2);border-radius:10px;padding:3px;margin-bottom:20px;gap:3px;">
+      <button id="tab-email-btn" onclick="switchAuthTab('email')"
+        style="flex:1;padding:7px;border-radius:8px;border:none;font-size:13px;font-weight:600;cursor:pointer;background:var(--accent);color:white;transition:all .15s;">
+        Email Login
+      </button>
+      <button id="tab-token-btn" onclick="switchAuthTab('token')"
+        style="flex:1;padding:7px;border-radius:8px;border:none;font-size:13px;font-weight:600;cursor:pointer;background:transparent;color:var(--muted);transition:all .15s;">
+        Admin Token
+      </button>
+    </div>
+
+    <!-- Email login -->
+    <div id="auth-email-tab">
+      <input type="email" id="login-email" placeholder="Email address" autocomplete="email" />
+      <input type="password" id="login-password" placeholder="Password" autocomplete="current-password" />
+      <button class="btn-login" id="login-btn">Sign In</button>
+      <div style="text-align:center;margin-top:14px;font-size:13px;color:var(--muted);">
+        Don't have an account?
+        <a href="#" onclick="showRegister();return false;" style="color:var(--accent-h);text-decoration:none;font-weight:600;">Create one</a>
+      </div>
+    </div>
+
+    <!-- Admin token -->
+    <div id="auth-token-tab" style="display:none;">
+      <input type="password" id="login-token" placeholder="Admin token" autocomplete="off" style="letter-spacing:2px;" />
+      <button class="btn-login" id="token-login-btn">Sign In with Token</button>
+    </div>
+
     <div class="login-err" id="login-err"></div>
+  </div>
+
+  <!-- Register card -->
+  <div class="login-card animate-in hidden" id="register-card">
+    <div class="login-logo">2nd<span>Call</span></div>
+    <div class="login-sub">Create your account</div>
+    <input type="text" id="reg-name" placeholder="Full name" autocomplete="name" />
+    <input type="email" id="reg-email" placeholder="Email address" autocomplete="email" />
+    <input type="password" id="reg-password" placeholder="Password (min 6 chars)" autocomplete="new-password" />
+    <input type="password" id="reg-confirm" placeholder="Confirm password" autocomplete="new-password" />
+    <button class="btn-login" id="register-btn">Create Account</button>
+    <div style="text-align:center;margin-top:14px;font-size:13px;color:var(--muted);">
+      Already have an account?
+      <a href="#" onclick="showLogin();return false;" style="color:var(--accent-h);text-decoration:none;font-weight:600;">Sign in</a>
+    </div>
+    <div class="login-err" id="reg-err"></div>
   </div>
 </div>
 
@@ -571,6 +630,7 @@
   <!-- Sidebar -->
   <aside id="sidebar">
     <div class="sidebar-logo">2C</div>
+    <div id="sidebar-user-avatar" class="avatar" style="width:32px;height:32px;font-size:12px;cursor:pointer;margin-bottom:4px;" data-nav="profile" title="My Profile">?</div>
 
     <div class="nav-item active" data-nav="chats" title="Messages">
       <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
@@ -591,6 +651,10 @@
     </div>
     <div class="sidebar-spacer"></div>
     <div class="wallet-pill" id="sidebar-balance">$0.00</div>
+    <div class="nav-item" data-nav="profile" title="My Profile">
+      <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
+      Profile
+    </div>
     <div class="nav-item" data-nav="settings" title="Settings">
       <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
       Settings
@@ -724,6 +788,81 @@
       </div>
     </div>
 
+    <!-- ── PROFILE PANEL ── -->
+    <div class="panel" id="panel-profile">
+      <div class="panel-header"><h2>My Profile</h2></div>
+      <div class="settings-body" id="profile-body">
+        <!-- Profile header card -->
+        <div class="settings-section" style="overflow:visible;">
+          <div style="padding:24px;display:flex;align-items:center;gap:16px;border-bottom:1px solid var(--border);">
+            <div id="profile-avatar" class="avatar" style="width:64px;height:64px;font-size:22px;flex-shrink:0;"></div>
+            <div style="min-width:0;">
+              <div id="profile-name-display" style="font-size:20px;font-weight:700;"></div>
+              <div id="profile-email-display" style="font-size:13px;color:var(--muted);margin-top:2px;"></div>
+              <div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap;">
+                <span id="profile-role-chip" class="chip"></span>
+                <span id="profile-since-chip" class="chip chip-gray"></span>
+              </div>
+            </div>
+          </div>
+          <!-- Stats row -->
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:0;border-bottom:1px solid var(--border);">
+            <div style="padding:16px;text-align:center;border-right:1px solid var(--border);">
+              <div style="font-size:22px;font-weight:800;color:var(--accent-h);" id="profile-stat-numbers">0</div>
+              <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-top:2px;">Numbers</div>
+            </div>
+            <div style="padding:16px;text-align:center;border-right:1px solid var(--border);">
+              <div style="font-size:22px;font-weight:800;color:var(--green);" id="profile-stat-msgs">0</div>
+              <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-top:2px;">Messages</div>
+            </div>
+            <div style="padding:16px;text-align:center;">
+              <div style="font-size:22px;font-weight:800;color:var(--yellow);" id="profile-stat-calls">0</div>
+              <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-top:2px;">Calls</div>
+            </div>
+          </div>
+          <div style="padding:14px 18px;display:flex;justify-content:space-between;align-items:center;">
+            <div style="font-size:13px;color:var(--muted);">Last active: <span id="profile-last-seen">—</span></div>
+            <button class="btn-text danger" id="profile-logout-btn">Sign out</button>
+          </div>
+        </div>
+
+        <!-- Edit name -->
+        <div class="settings-section">
+          <div class="settings-section-title">Edit Profile</div>
+          <div class="settings-row" style="flex-direction:column;align-items:stretch;gap:10px;">
+            <div class="form-field"><label class="form-label">Display name</label>
+              <input class="form-input" id="profile-name-input" placeholder="Your name" style="margin-bottom:0;" /></div>
+            <button class="btn-primary" id="profile-save-btn" style="width:fit-content;">Save changes</button>
+            <div class="status-line" id="profile-save-status"></div>
+          </div>
+        </div>
+
+        <!-- Change password -->
+        <div class="settings-section">
+          <div class="settings-section-title">Change Password</div>
+          <div class="settings-row" style="flex-direction:column;align-items:stretch;gap:10px;">
+            <div class="form-field"><label class="form-label">Current password</label>
+              <input class="form-input" id="pw-current" type="password" placeholder="Current password" style="margin-bottom:0;" /></div>
+            <div class="form-field"><label class="form-label">New password</label>
+              <input class="form-input" id="pw-new" type="password" placeholder="New password (min 6 chars)" style="margin-bottom:0;" /></div>
+            <div class="form-field"><label class="form-label">Confirm new password</label>
+              <input class="form-input" id="pw-confirm" type="password" placeholder="Confirm new password" style="margin-bottom:0;" /></div>
+            <button class="btn-primary" id="pw-save-btn" style="width:fit-content;">Change password</button>
+            <div class="status-line" id="pw-status"></div>
+          </div>
+        </div>
+
+        <!-- Admin: all users -->
+        <div class="settings-section hidden" id="admin-users-section">
+          <div class="settings-section-title" style="display:flex;align-items:center;justify-content:space-between;">
+            All Users
+            <span id="admin-user-count" class="chip chip-blue"></span>
+          </div>
+          <div id="admin-users-list"></div>
+        </div>
+      </div>
+    </div>
+
     <!-- ── SETTINGS PANEL ── -->
     <div class="panel" id="panel-settings">
       <div class="panel-header"><h2>Settings</h2></div>
@@ -808,6 +947,10 @@
     <div class="bnav-item" data-nav="wallet">
       <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/></svg>
       Wallet
+    </div>
+    <div class="bnav-item" data-nav="profile">
+      <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
+      Profile
     </div>
     <div class="bnav-item" data-nav="settings">
       <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
@@ -960,6 +1103,8 @@ const S = {
   searchResults: [],
   contacts: JSON.parse(localStorage.getItem("2c_contacts") || "{}"),
   seenContacts: JSON.parse(localStorage.getItem("2c_seen") || "{}"),
+  currentUser: null,
+  isAdmin: false,
 };
 
 // ════════════════════════════════════════════
@@ -1050,14 +1195,33 @@ function setStatus(id, msg, isErr = false) {
 // ════════════════════════════════════════════
 //  AUTH
 // ════════════════════════════════════════════
+function switchAuthTab(tab) {
+  const isEmail = tab === "email";
+  document.getElementById("auth-email-tab").style.display = isEmail ? "" : "none";
+  document.getElementById("auth-token-tab").style.display = isEmail ? "none" : "";
+  document.getElementById("tab-email-btn").style.background = isEmail ? "var(--accent)" : "transparent";
+  document.getElementById("tab-email-btn").style.color = isEmail ? "white" : "var(--muted)";
+  document.getElementById("tab-token-btn").style.background = isEmail ? "transparent" : "var(--accent)";
+  document.getElementById("tab-token-btn").style.color = isEmail ? "var(--muted)" : "white";
+}
+function showLogin() {
+  document.getElementById("register-card").classList.add("hidden");
+  document.getElementById("login-card").classList.remove("hidden");
+}
+function showRegister() {
+  document.getElementById("login-card").classList.add("hidden");
+  document.getElementById("register-card").classList.remove("hidden");
+}
 async function checkAuth() {
   try {
     const d = await api("/api/auth/status");
-    if (d.authed) { showApp(); return; }
-    if (!d.token_required) {
-      document.getElementById("login-open-hint").style.display = "";
-      document.getElementById("login-token").style.display = "none";
+    if (d.authed) {
+      if (d.user) S.currentUser = d.user;
+      S.isAdmin = d.is_admin;
+      showApp();
+      return;
     }
+    if (!d.token_required) { switchAuthTab("email"); }
   } catch {}
   document.getElementById("login-screen").style.display = "flex";
 }
@@ -1066,21 +1230,64 @@ function showApp() {
   document.getElementById("app").classList.remove("hidden");
   initApp();
 }
+
+// Email login
 document.getElementById("login-btn").addEventListener("click", async () => {
+  const email = document.getElementById("login-email").value.trim();
+  const password = document.getElementById("login-password").value;
+  const err = document.getElementById("login-err");
+  err.textContent = "";
+  if (!email || !password) { err.textContent = "Please enter email and password."; return; }
+  try {
+    const d = await api("/api/auth/login", { method:"POST", body: JSON.stringify({email, password}) });
+    if (d.user) S.currentUser = d.user;
+    S.isAdmin = d.user?.role === "admin";
+    showApp();
+  } catch(e) { err.textContent = e.message; }
+});
+// Admin token login
+document.getElementById("token-login-btn").addEventListener("click", async () => {
   const token = document.getElementById("login-token").value.trim();
-  document.getElementById("login-err").textContent = "";
+  const err = document.getElementById("login-err");
+  err.textContent = "";
   try {
     S.token = token;
     await api("/api/auth/login", { method:"POST", body: JSON.stringify({token}) });
     sessionStorage.setItem("2c_token", token);
+    S.isAdmin = true;
     showApp();
   } catch(e) {
     S.token = "";
-    document.getElementById("login-err").textContent = e.message;
+    err.textContent = e.message;
   }
 });
+// Register
+document.getElementById("register-btn").addEventListener("click", async () => {
+  const name = document.getElementById("reg-name").value.trim();
+  const email = document.getElementById("reg-email").value.trim();
+  const pass = document.getElementById("reg-password").value;
+  const conf = document.getElementById("reg-confirm").value;
+  const err = document.getElementById("reg-err");
+  err.textContent = "";
+  if (!email || !pass) { err.textContent = "Email and password are required."; return; }
+  if (pass !== conf) { err.textContent = "Passwords do not match."; return; }
+  if (pass.length < 6) { err.textContent = "Password must be at least 6 characters."; return; }
+  try {
+    const d = await api("/api/auth/register", { method:"POST", body: JSON.stringify({name, email, password: pass}) });
+    if (d.user) S.currentUser = d.user;
+    S.isAdmin = d.user?.role === "admin";
+    showApp();
+  } catch(e) { err.textContent = e.message; }
+});
+// Enter key support
+["login-email","login-password"].forEach(id => {
+  document.getElementById(id).addEventListener("keydown", e => { if (e.key==="Enter") document.getElementById("login-btn").click(); });
+});
 document.getElementById("login-token").addEventListener("keydown", e => {
-  if (e.key === "Enter") document.getElementById("login-btn").click();
+  if (e.key === "Enter") document.getElementById("token-login-btn").click();
+});
+["reg-name","reg-email","reg-password","reg-confirm"].forEach(id => {
+  document.getElementById(id).addEventListener("keydown", e => { if (e.key==="Enter") document.getElementById("register-btn").click(); });
 });
 
 // ════════════════════════════════════════════
@@ -1100,6 +1307,7 @@ function navigate(nav) {
   if (nav === "numbers") loadNumbers();
   if (nav === "wallet") loadWallet();
   if (nav === "settings") loadSettings();
+  if (nav === "profile") loadProfile();
 }
 document.querySelectorAll("[data-nav]").forEach(el => {
   el.addEventListener("click", () => navigate(el.dataset.nav));
@@ -1766,6 +1974,142 @@ document.getElementById("settings-logout-btn").addEventListener("click", async (
 });
 
 // ════════════════════════════════════════════
+//  PROFILE
+// ════════════════════════════════════════════
+function fmtDate(iso) {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  return d.toLocaleDateString("en-US", { year:"numeric", month:"short", day:"numeric" });
+}
+function fmtDateTime(iso) {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  const now = new Date();
+  const diff = Math.floor((now - d) / 1000);
+  if (diff < 60) return "just now";
+  if (diff < 3600) return `${Math.floor(diff/60)}m ago`;
+  if (diff < 86400) return `${Math.floor(diff/3600)}h ago`;
+  return d.toLocaleDateString("en-US", { month:"short", day:"numeric", hour:"2-digit", minute:"2-digit" });
+}
+function avatarInitials(name, email) {
+  if (name && name.trim()) {
+    const parts = name.trim().split(/\s+/);
+    return parts.length > 1 ? (parts[0][0]+parts[1][0]).toUpperCase() : parts[0].slice(0,2).toUpperCase();
+  }
+  return (email || "?")[0].toUpperCase();
+}
+async function loadProfile() {
+  const u = S.currentUser;
+  if (!u) {
+    // Admin token only — show minimal profile
+    document.getElementById("profile-avatar").textContent = "AD";
+    document.getElementById("profile-avatar").style.background = "var(--accent)";
+    document.getElementById("profile-name-display").textContent = "Admin";
+    document.getElementById("profile-email-display").textContent = "Admin token session";
+    document.getElementById("profile-role-chip").textContent = "Admin";
+    document.getElementById("profile-role-chip").className = "chip chip-blue";
+    document.getElementById("profile-since-chip").textContent = "";
+    document.getElementById("profile-stat-numbers").textContent = S.numbers?.length || 0;
+    document.getElementById("profile-stat-msgs").textContent = (S.conversations||[]).reduce((a,c)=>a+(c.count||0),0);
+    document.getElementById("profile-stat-calls").textContent = S.calls?.length || 0;
+    document.getElementById("profile-last-seen").textContent = "Active";
+    document.getElementById("profile-name-input").value = "";
+    document.getElementById("profile-name-input").disabled = true;
+    document.getElementById("profile-save-btn").disabled = true;
+    document.getElementById("pw-current").disabled = true;
+    document.getElementById("pw-new").disabled = true;
+    document.getElementById("pw-confirm").disabled = true;
+    document.getElementById("pw-save-btn").disabled = true;
+    if (S.isAdmin) await loadAdminUsers();
+    return;
+  }
+  // Refresh user from server
+  try {
+    const d = await api("/api/auth/me");
+    if (d.user) { S.currentUser = d.user; Object.assign(u, d.user); }
+  } catch {}
+  const initials = avatarInitials(u.name, u.email);
+  const avatarEl = document.getElementById("profile-avatar");
+  avatarEl.textContent = initials;
+  avatarEl.style.background = u.avatar_color || "var(--accent)";
+  document.getElementById("profile-name-display").textContent = u.name || u.email.split("@")[0];
+  document.getElementById("profile-email-display").textContent = u.email;
+  const roleChip = document.getElementById("profile-role-chip");
+  roleChip.textContent = u.role === "admin" ? "Admin" : "Member";
+  roleChip.className = "chip " + (u.role === "admin" ? "chip-blue" : "chip-green");
+  document.getElementById("profile-since-chip").textContent = "Joined " + fmtDate(u.created_at);
+  document.getElementById("profile-stat-numbers").textContent = S.numbers?.length || 0;
+  document.getElementById("profile-stat-msgs").textContent = (S.conversations||[]).reduce((a,c)=>a+(c.count||0),0);
+  document.getElementById("profile-stat-calls").textContent = S.calls?.length || 0;
+  document.getElementById("profile-last-seen").textContent = fmtDateTime(u.last_seen || u.last_login);
+  document.getElementById("profile-name-input").value = u.name || "";
+  document.getElementById("profile-name-input").disabled = false;
+  document.getElementById("profile-save-btn").disabled = false;
+  document.getElementById("pw-current").disabled = false;
+  document.getElementById("pw-new").disabled = false;
+  document.getElementById("pw-confirm").disabled = false;
+  document.getElementById("pw-save-btn").disabled = false;
+  if (S.isAdmin) await loadAdminUsers();
+}
+async function loadAdminUsers() {
+  const section = document.getElementById("admin-users-section");
+  section.classList.remove("hidden");
+  try {
+    const d = await api("/api/admin/users");
+    document.getElementById("admin-user-count").textContent = d.total + " users";
+    document.getElementById("admin-users-list").innerHTML = d.users.map(u => {
+      const initials = avatarInitials(u.name, u.email);
+      return `<div class="admin-user-row">
+        <div class="avatar" style="width:36px;height:36px;font-size:13px;flex-shrink:0;background:${u.avatar_color||'var(--accent)'};">${initials}</div>
+        <div class="admin-user-info">
+          <div class="admin-user-name">${u.name || u.email.split("@")[0]}</div>
+          <div class="admin-user-email">${u.email}</div>
+        </div>
+        <div style="text-align:right;flex-shrink:0;">
+          <div class="chip ${u.role==='admin'?'chip-blue':'chip-green'}" style="margin-bottom:4px;">${u.role}</div>
+          <div style="font-size:11px;color:var(--muted);">${fmtDate(u.created_at)}</div>
+        </div>
+      </div>`;
+    }).join("") || `<div style="padding:18px;color:var(--muted);text-align:center;font-size:13px;">No users yet.</div>`;
+  } catch {}
+}
+document.getElementById("profile-logout-btn").addEventListener("click", async () => {
+  await api("/api/auth/logout", { method:"POST" }).catch(()=>{});
+  sessionStorage.removeItem("2c_token");
+  S.token = "";
+  location.reload();
+});
+document.getElementById("profile-save-btn").addEventListener("click", async () => {
+  const name = document.getElementById("profile-name-input").value.trim();
+  const status = document.getElementById("profile-save-status");
+  if (!name) { status.style.color="var(--red)"; status.textContent="Name is required."; return; }
+  try {
+    const d = await api("/api/auth/profile", { method:"PATCH", body:JSON.stringify({name}) });
+    S.currentUser = d.user;
+    document.getElementById("profile-name-display").textContent = d.user.name;
+    status.style.color="var(--green)"; status.textContent="✓ Profile updated!";
+    setTimeout(()=>status.textContent="",3000);
+  } catch(e) { status.style.color="var(--red)"; status.textContent=e.message; }
+});
+document.getElementById("pw-save-btn").addEventListener("click", async () => {
+  const cur = document.getElementById("pw-current").value;
+  const nw = document.getElementById("pw-new").value;
+  const conf = document.getElementById("pw-confirm").value;
+  const status = document.getElementById("pw-status");
+  if (!cur || !nw) { status.style.color="var(--red)"; status.textContent="Fill in all fields."; return; }
+  if (nw !== conf) { status.style.color="var(--red)"; status.textContent="New passwords don't match."; return; }
+  if (nw.length < 6) { status.style.color="var(--red)"; status.textContent="Password must be at least 6 characters."; return; }
+  try {
+    await api("/api/auth/change-password", { method:"POST", body:JSON.stringify({current_password:cur, new_password:nw}) });
+    document.getElementById("pw-current").value="";
+    document.getElementById("pw-new").value="";
+    document.getElementById("pw-confirm").value="";
+    status.style.color="var(--green)"; status.textContent="✓ Password changed!";
+    setTimeout(()=>status.textContent="",3000);
+  } catch(e) { status.style.color="var(--red)"; status.textContent=e.message; }
+});
+
+// ════════════════════════════════════════════
 //  CONTACT NAME MODAL
 // ════════════════════════════════════════════
 let _editingContact = null;
@@ -1856,6 +2200,20 @@ function startAutoRefresh() {
 // ════════════════════════════════════════════
 //  INIT
 // ════════════════════════════════════════════
+function updateSidebarUser() {
+  const avatarEl = document.getElementById("sidebar-user-avatar");
+  if (!avatarEl) return;
+  const u = S.currentUser;
+  if (u) {
+    avatarEl.textContent = avatarInitials(u.name, u.email);
+    avatarEl.style.background = u.avatar_color || "var(--accent)";
+    avatarEl.title = u.name || u.email;
+  } else if (S.isAdmin) {
+    avatarEl.textContent = "AD";
+    avatarEl.style.background = "var(--accent)";
+    avatarEl.title = "Admin";
+  }
+}
 async function initApp() {
   buildDialpad();
   // Render webhook URLs immediately
@@ -1863,6 +2221,9 @@ async function initApp() {
   document.getElementById("wh-twilio-msg").textContent = `${base}/webhooks/twilio/message`;
   document.getElementById("wh-twilio-voice").textContent = `${base}/webhooks/twilio/voice`;
   document.getElementById("wh-telnyx").textContent = `${base}/webhooks/telnyx/events`;
+
+  // Update sidebar user display
+  updateSidebarUser();
 
   try {
     const [provD, numD, convD, walD] = await Promise.all([
