@@ -497,6 +497,7 @@ class TelnyxProvider(BaseProvider):
         order = payload.get("data", {})
         warnings: list[str] = []
         messaging_assignment: dict[str, Any] | None = None
+        voice_assignment: dict[str, Any] | None = None
 
         if self.messaging_profile_id:
             if number_id:
@@ -515,6 +516,22 @@ class TelnyxProvider(BaseProvider):
                 "SMS may fail with 40305 until the number is linked to a messaging profile."
             )
 
+        # Assign to voice connection so outbound/inbound calls work immediately.
+        if self.connection_id and number_id:
+            try:
+                voice_assignment = self._request(
+                    "PATCH",
+                    f"/phone_numbers/{number_id}",
+                    json_payload={"connection_id": self.connection_id},
+                )
+            except ProviderError as exc:
+                warnings.append(f"Failed to assign number to voice connection: {exc}")
+        elif not self.connection_id:
+            warnings.append(
+                "TELNYX_CONNECTION_ID is not configured. "
+                "Inbound/outbound calls will not work until the number is linked to a connection."
+            )
+
         return {
             "phone_number": phone_number,
             "provider_number_id": number_id or order.get("id"),
@@ -522,6 +539,7 @@ class TelnyxProvider(BaseProvider):
             "raw": {
                 "order": payload,
                 "messaging_assignment": messaging_assignment,
+                "voice_assignment": voice_assignment,
             },
             "warnings": warnings,
         }
