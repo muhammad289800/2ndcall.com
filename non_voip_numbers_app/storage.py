@@ -135,6 +135,25 @@ class Storage:
                 )
                 """
             )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS payment_orders (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER,
+                    order_id TEXT NOT NULL UNIQUE,
+                    paydify_txn_id TEXT DEFAULT '',
+                    amount_usd REAL NOT NULL,
+                    currency TEXT DEFAULT 'USDT',
+                    status TEXT DEFAULT 'pending',
+                    deeplink TEXT DEFAULT '',
+                    from_address TEXT DEFAULT '',
+                    tx_hash TEXT DEFAULT '',
+                    created_at TEXT NOT NULL,
+                    paid_at TEXT,
+                    metadata_json TEXT DEFAULT '{}'
+                )
+                """
+            )
             # Lightweight migrations — safe to run on every startup, ignored if column exists
             self._ensure_column(conn, "message_logs", "direction", "TEXT NOT NULL DEFAULT 'outbound'")
             self._ensure_column(conn, "message_logs", "event_type", "TEXT DEFAULT ''")
@@ -143,6 +162,8 @@ class Storage:
             # Users table migrations (for DBs created before the users feature)
             self._ensure_column(conn, "users", "avatar_color", "TEXT DEFAULT '#1f6feb'")
             self._ensure_column(conn, "users", "last_seen", "TEXT")
+            # Per-user wallet: user_id = NULL means global/admin transaction
+            self._ensure_column(conn, "wallet_transactions", "user_id", "INTEGER DEFAULT NULL")
 
     def _ensure_column(
         self,
@@ -379,24 +400,40 @@ class Storage:
                 (provider, event_type, json.dumps(payload), utc_now()),
             )
 
-    def get_wallet_balance(self) -> float:
+    def get_wallet_balance(self, user_id: int | None = None) -> float:
+        """Return wallet balance. If user_id given, returns that user's balance; else global."""
         with self._connect() as conn:
-            row = conn.execute(
-                "SELECT COALESCE(SUM(amount), 0) AS balance FROM wallet_transactions"
-            ).fetchone()
+            if user_id is not None:
+                row = conn.execute(
+                    "SELECT COALESCE(SUM(amount), 0) AS balance FROM wallet_transactions WHERE user_id=?",
+                    (user_id,),
+                ).fetchone()
+            else:
+                row = conn.execute(
+                    "SELECT COALESCE(SUM(amount), 0) AS balance FROM wallet_transactions WHERE user_id IS NULL"
+                ).fetchone()
         return float(row["balance"] or 0.0)
 
-    def list_wallet_transactions(self, limit: int = 100) -> list[dict[str, Any]]:
+    def list_wallet_transactions(self, limit: int = 100, user_id: int | None = None) -> list[dict[str, Any]]:
         with self._connect() as conn:
-            rows = conn.execute(
-                """
-                SELECT id, amount, tx_type, provider, description, reference_id, created_at
-                FROM wallet_transactions
-                ORDER BY created_at DESC
-                LIMIT ?
-                """,
-                (limit,),
-            ).fetchall()
+            if user_id is not None:
+                rows = conn.execute(
+                    """
+                    SELECT id, amount, tx_type, provider, description, reference_id, created_at, user_id
+                    FROM wallet_transactions WHERE user_id=?
+                    ORDER BY created_at DESC LIMIT ?
+                    """,
+                    (user_id, limit),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    """
+                    SELECT id, amount, tx_type, provider, description, reference_id, created_at, user_id
+                    FROM wallet_transactions WHERE user_id IS NULL
+                    ORDER BY created_at DESC LIMIT ?
+                    """,
+                    (limit,),
+                ).fetchall()
         return [dict(row) for row in rows]
 
     def create_wallet_transaction(
@@ -406,20 +443,21 @@ class Storage:
         provider: str = "",
         description: str = "",
         reference_id: str = "",
+        user_id: int | None = None,
     ) -> dict[str, Any]:
         with self._connect() as conn:
             conn.execute(
                 """
                 INSERT INTO wallet_transactions (
-                    amount, tx_type, provider, description, reference_id, created_at
+                    amount, tx_type, provider, description, reference_id, created_at, user_id
                 )
-                VALUES (?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
-                (amount, tx_type, provider, description, reference_id, utc_now()),
+                (amount, tx_type, provider, description, reference_id, utc_now(), user_id),
             )
             row = conn.execute(
                 """
-                SELECT id, amount, tx_type, provider, description, reference_id, created_at
+                SELECT id, amount, tx_type, provider, description, reference_id, created_at, user_id
                 FROM wallet_transactions
                 ORDER BY id DESC
                 LIMIT 1
@@ -429,15 +467,16 @@ class Storage:
             raise RuntimeError("Failed to create wallet transaction.")
         return dict(row)
 
-    def top_up_wallet(self, amount: float, method: str = "manual") -> dict[str, Any]:
+    def top_up_wallet(self, amount: float, method: str = "manual", user_id: int | None = None) -> dict[str, Any]:
         if amount <= 0:
             raise ValueError("Top-up amount must be greater than zero.")
         tx = self.create_wallet_transaction(
             amount=amount,
             tx_type="topup",
             description=f"Wallet top-up via {method}",
+            user_id=user_id,
         )
-        return {"transaction": tx, "balance": self.get_wallet_balance()}
+        return {"transaction": tx, "balance": self.get_wallet_balance(user_id=user_id)}
 
     def charge_wallet(
         self,
@@ -446,10 +485,11 @@ class Storage:
         provider: str,
         description: str,
         reference_id: str = "",
+        user_id: int | None = None,
     ) -> dict[str, Any]:
         if amount <= 0:
             raise ValueError("Charge amount must be greater than zero.")
-        balance = self.get_wallet_balance()
+        balance = self.get_wallet_balance(user_id=user_id)
         if balance < amount:
             raise ValueError(
                 f"Insufficient wallet balance. Required ${amount:.2f}, available ${balance:.2f}."
@@ -460,8 +500,9 @@ class Storage:
             provider=provider,
             description=description,
             reference_id=reference_id,
+            user_id=user_id,
         )
-        return {"transaction": tx, "balance": self.get_wallet_balance()}
+        return {"transaction": tx, "balance": self.get_wallet_balance(user_id=user_id)}
 
     # ── User / Auth ────────────────────────────────────────────────────────
 
@@ -565,4 +606,103 @@ class Storage:
         with self._connect() as conn:
             row = conn.execute("SELECT COUNT(*) AS cnt FROM users").fetchone()
         return int(row["cnt"] or 0)
+
+    # ── Payment Orders ────────────────────────────────────────────────────
+
+    def create_payment_order(
+        self,
+        order_id: str,
+        amount_usd: float,
+        currency: str = "USDT",
+        deeplink: str = "",
+        paydify_txn_id: str = "",
+        user_id: int | None = None,
+    ) -> dict[str, Any]:
+        now = utc_now()
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO payment_orders
+                    (order_id, paydify_txn_id, amount_usd, currency, deeplink, status, created_at, user_id)
+                VALUES (?, ?, ?, ?, ?, 'pending', ?, ?)
+                """,
+                (order_id, paydify_txn_id, amount_usd, currency, deeplink, now, user_id),
+            )
+        return self.get_payment_order(order_id)  # type: ignore[return-value]
+
+    def get_payment_order(self, order_id: str) -> dict[str, Any] | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM payment_orders WHERE order_id=?",
+                (order_id,),
+            ).fetchone()
+        return dict(row) if row else None
+
+    def mark_payment_order_paid(
+        self,
+        order_id: str,
+        paydify_txn_id: str = "",
+        tx_hash: str = "",
+        from_address: str = "",
+        paid_amount: float | None = None,
+    ) -> dict[str, Any] | None:
+        now = utc_now()
+        with self._connect() as conn:
+            order_row = conn.execute(
+                "SELECT * FROM payment_orders WHERE order_id=?", (order_id,)
+            ).fetchone()
+            if not order_row:
+                return None
+            order = dict(order_row)
+            if order["status"] == "paid":
+                return order  # already processed — idempotent
+
+            # Mark order paid
+            conn.execute(
+                """
+                UPDATE payment_orders
+                SET status='paid', paid_at=?, paydify_txn_id=?, tx_hash=?, from_address=?
+                WHERE order_id=?
+                """,
+                (now, paydify_txn_id or order["paydify_txn_id"], tx_hash, from_address, order_id),
+            )
+
+            # Credit the user's wallet
+            credit_amount = paid_amount if paid_amount else order["amount_usd"]
+            conn.execute(
+                """
+                INSERT INTO wallet_transactions
+                    (amount, tx_type, provider, description, reference_id, created_at, user_id)
+                VALUES (?, 'topup', 'bitget', ?, ?, ?, ?)
+                """,
+                (
+                    credit_amount,
+                    f"Bitget Pay top-up — order {order_id}",
+                    order_id,
+                    now,
+                    order.get("user_id"),
+                ),
+            )
+        return self.get_payment_order(order_id)
+
+    def mark_payment_order_failed(self, order_id: str) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE payment_orders SET status='failed' WHERE order_id=? AND status='pending'",
+                (order_id,),
+            )
+
+    def list_payment_orders(self, user_id: int | None = None, limit: int = 50) -> list[dict[str, Any]]:
+        with self._connect() as conn:
+            if user_id is not None:
+                rows = conn.execute(
+                    "SELECT * FROM payment_orders WHERE user_id=? ORDER BY created_at DESC LIMIT ?",
+                    (user_id, limit),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT * FROM payment_orders ORDER BY created_at DESC LIMIT ?",
+                    (limit,),
+                ).fetchall()
+        return [dict(r) for r in rows]
 

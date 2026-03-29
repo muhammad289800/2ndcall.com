@@ -73,6 +73,17 @@
     .admin-user-name { font-size:14px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
     .admin-user-email { font-size:12px; color:var(--muted); }
 
+    /* ── Checkout / Topup ── */
+    .btn-amount { background:var(--surface2); border:1px solid var(--border); color:var(--fg);
+      padding:8px 16px; border-radius:8px; font-size:14px; font-weight:600; cursor:pointer; transition:all .15s; }
+    .btn-amount:hover, .btn-amount.active { background:var(--accent); color:white; border-color:var(--accent); }
+    .spinner { width:16px; height:16px; border:2px solid var(--border); border-top-color:var(--accent);
+      border-radius:50%; animation:spin .7s linear infinite; flex-shrink:0; }
+    @keyframes spin { to { transform:rotate(360deg); } }
+    .pending-order-row { display:flex; align-items:center; gap:10px; padding:10px 14px;
+      background:var(--surface2); border-radius:10px; margin-bottom:8px; border:1px solid var(--border); }
+    .pending-order-row .spinner { border-top-color:var(--yellow); }
+
     /* ── App Shell ── */
     #app {
       display: grid;
@@ -765,25 +776,29 @@
     <div class="panel" id="panel-wallet">
       <div class="panel-header"><h2>Wallet</h2></div>
       <div class="wallet-body">
+
+        <!-- Balance card -->
         <div class="balance-card">
           <div class="balance-icon">💳</div>
-          <div>
+          <div style="flex:1;">
             <div class="balance-amount" id="wallet-balance-big">$0.00</div>
             <div class="balance-label">Available balance</div>
           </div>
+          <button class="btn-primary" id="open-topup-btn" style="white-space:nowrap;padding:10px 20px;">
+            + Add Funds
+          </button>
         </div>
-        <div class="topup-card">
-          <div class="section-title">Add Funds</div>
-          <div class="topup-row">
-            <div class="form-field"><label>Amount (USD)</label><input id="topup-amount" value="20" type="number" /></div>
-            <div class="form-field"><label>Method</label><select id="topup-method"><option value="manual">Manual</option><option value="bank_transfer">Bank transfer</option><option value="card">Card</option></select></div>
-            <button class="btn-primary" id="topup-btn">Add Funds</button>
-          </div>
-          <div class="status-line" id="topup-status"></div>
+
+        <!-- Pending orders -->
+        <div id="pending-orders-section" style="display:none;margin-bottom:16px;">
+          <div class="section-title">Pending Payments</div>
+          <div id="pending-orders-list"></div>
         </div>
+
+        <!-- Transaction history -->
         <div class="section-title">Transaction History</div>
         <div class="tx-list" id="tx-list">
-          <div class="empty-state"><p>No transactions yet.</p></div>
+          <div class="empty-state"><p>No transactions yet. Add funds to get started.</p></div>
         </div>
       </div>
     </div>
@@ -1080,6 +1095,82 @@
       <button class="btn-primary" id="ct-save-btn">Save</button>
     </div>
   </div>
+<!-- Bitget / Add Funds Checkout Modal -->
+<div class="modal-overlay hidden" id="modal-topup">
+  <div class="modal" style="max-width:460px;">
+    <div class="modal-header">
+      <h3 id="topup-modal-title">Add Funds</h3>
+      <button class="modal-close" data-close="modal-topup">✕</button>
+    </div>
+    <div class="modal-body">
+
+      <!-- Step 1: Choose amount -->
+      <div id="topup-step-choose">
+        <p style="color:var(--muted);font-size:13px;margin-bottom:16px;">
+          Pay with crypto via Bitget Wallet. Funds are credited instantly after confirmation.
+        </p>
+        <div class="quick-amounts" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;">
+          <button class="btn-amount" data-amt="5">$5</button>
+          <button class="btn-amount" data-amt="10">$10</button>
+          <button class="btn-amount" data-amt="25">$25</button>
+          <button class="btn-amount" data-amt="50">$50</button>
+          <button class="btn-amount" data-amt="100">$100</button>
+        </div>
+        <div class="form-field">
+          <label class="form-label">Custom amount (USD)</label>
+          <input class="form-input" type="number" id="topup-amount-input" min="1" step="1" placeholder="Enter amount" style="margin-bottom:0;" />
+        </div>
+        <button class="btn-primary" id="topup-proceed-btn" style="width:100%;margin-top:14px;">
+          Continue to Bitget Pay
+        </button>
+        <div class="status-line" id="topup-choose-status" style="text-align:center;margin-top:8px;"></div>
+      </div>
+
+      <!-- Step 2: Checkout — show deeplink + status -->
+      <div id="topup-step-checkout" style="display:none;text-align:center;">
+        <div style="margin-bottom:16px;">
+          <div style="font-size:13px;color:var(--muted);margin-bottom:6px;">You are paying</div>
+          <div id="checkout-amount-display" style="font-size:32px;font-weight:900;color:var(--accent-h);"></div>
+          <div style="font-size:12px;color:var(--muted);margin-top:2px;">in USDT via Bitget Wallet</div>
+        </div>
+
+        <!-- Bitget Pay button -->
+        <a id="checkout-pay-link" href="#" target="_blank" rel="noopener"
+           style="display:flex;align-items:center;justify-content:center;gap:10px;
+                  background:#00c48f;color:white;font-weight:700;font-size:16px;padding:14px 24px;
+                  border-radius:12px;text-decoration:none;margin-bottom:16px;transition:opacity .15s;"
+           onmouseover="this.style.opacity='.85'" onmouseout="this.style.opacity='1'">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14H9V8h2v8zm4 0h-2V8h2v8z"/></svg>
+          Pay with Bitget Wallet
+        </a>
+
+        <div style="font-size:12px;color:var(--muted);margin-bottom:18px;">
+          Opens Bitget Wallet app. Complete payment there and return here.
+        </div>
+
+        <!-- Status area -->
+        <div id="checkout-status-area">
+          <div style="display:flex;align-items:center;justify-content:center;gap:8px;padding:12px;
+                      background:var(--surface2);border-radius:10px;border:1px solid var(--border);">
+            <div class="spinner" id="checkout-spinner"></div>
+            <div id="checkout-status-text" style="font-size:13px;color:var(--muted);">Waiting for payment confirmation…</div>
+          </div>
+          <div id="checkout-order-id" style="font-size:11px;color:var(--muted);margin-top:8px;"></div>
+        </div>
+
+        <!-- Success state (hidden initially) -->
+        <div id="checkout-success" style="display:none;">
+          <div style="font-size:48px;margin-bottom:10px;">✅</div>
+          <div style="font-size:18px;font-weight:700;color:var(--green);margin-bottom:6px;">Payment Confirmed!</div>
+          <div id="checkout-success-msg" style="font-size:13px;color:var(--muted);margin-bottom:16px;"></div>
+          <button class="btn-primary" onclick="closeModal('modal-topup');loadWallet();" style="width:100%;">Done</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
 </div>
 
 <!-- Toast container -->
@@ -1883,7 +1974,7 @@ function renderGetNumberResults() {
 // ════════════════════════════════════════════
 async function loadWallet() {
   const d = await api("/api/wallet");
-  S.wallet = d || { balance: 0, transactions: [] };
+  S.wallet = d || { balance: 0, transactions: [], payment_orders: [] };
   renderWallet();
 }
 
@@ -1893,15 +1984,34 @@ function renderWallet() {
   document.getElementById("wallet-balance-big").textContent = fmt;
   document.getElementById("sidebar-balance").textContent = fmt;
 
+  // Pending orders
+  const orders = (S.wallet.payment_orders || []).filter(o => o.status === "pending");
+  const pendSec = document.getElementById("pending-orders-section");
+  if (orders.length) {
+    pendSec.style.display = "";
+    document.getElementById("pending-orders-list").innerHTML = orders.map(o => `
+      <div class="pending-order-row">
+        <div class="spinner"></div>
+        <div style="flex:1;">
+          <div style="font-size:13px;font-weight:600;">Awaiting payment — $${Number(o.amount_usd).toFixed(2)} ${o.currency}</div>
+          <div style="font-size:11px;color:var(--muted);">Order ID: ${esc(o.order_id)} · ${fmtFull(o.created_at)}</div>
+        </div>
+        <button class="btn-text" style="font-size:12px;" onclick="pollOrder('${esc(o.order_id)}')">Check</button>
+      </div>`).join("");
+  } else {
+    pendSec.style.display = "none";
+  }
+
   const txs = S.wallet.transactions || [];
   const list = document.getElementById("tx-list");
   if (!txs.length) {
-    list.innerHTML = `<div class="empty-state"><p>No transactions yet.</p></div>`;
+    list.innerHTML = `<div class="empty-state"><p>No transactions yet. Add funds to get started.</p></div>`;
     return;
   }
+  const txIcons = { sms:"💬", call:"📞", number_order:"📱", topup:"💰" };
   list.innerHTML = txs.map(tx => {
     const isCredit = tx.amount > 0;
-    const icon = isCredit ? "💰" : (tx.tx_type === "sms" ? "💬" : (tx.tx_type === "call" ? "📞" : "📤"));
+    const icon = isCredit ? "💰" : (txIcons[tx.tx_type] || "📤");
     return `<div class="tx-item">
       <div class="tx-icon" style="background:${isCredit ? "var(--green-bg)" : "var(--surface2)"}">${icon}</div>
       <div class="tx-info">
@@ -1913,17 +2023,99 @@ function renderWallet() {
   }).join("");
 }
 
-document.getElementById("topup-btn").addEventListener("click", async () => {
-  const amount = Number(document.getElementById("topup-amount").value || 0);
-  const method = document.getElementById("topup-method").value || "manual";
-  setStatus("topup-status","Adding funds…");
-  try {
-    const d = await api("/api/wallet/topup", { method:"POST", body: JSON.stringify({ amount, method }) });
-    setStatus("topup-status","✓ Balance updated!");
-    toast(`$${amount.toFixed(2)} added to wallet`);
-    await loadWallet();
-  } catch(e) { setStatus("topup-status", e.message, true); }
+// ── Checkout / Add Funds ──────────────────────────────────────────────
+document.getElementById("open-topup-btn").addEventListener("click", () => {
+  openTopupModal();
 });
+function openTopupModal() {
+  document.getElementById("topup-step-choose").style.display = "";
+  document.getElementById("topup-step-checkout").style.display = "none";
+  document.getElementById("topup-choose-status").textContent = "";
+  document.getElementById("topup-amount-input").value = "";
+  document.querySelectorAll(".btn-amount").forEach(b => b.classList.remove("active"));
+  document.getElementById("modal-topup").classList.remove("hidden");
+}
+// Quick amount buttons
+document.querySelectorAll(".btn-amount").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".btn-amount").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    document.getElementById("topup-amount-input").value = btn.dataset.amt;
+  });
+});
+document.getElementById("topup-proceed-btn").addEventListener("click", async () => {
+  const amount = parseFloat(document.getElementById("topup-amount-input").value || 0);
+  const statusEl = document.getElementById("topup-choose-status");
+  if (!amount || amount < 1) {
+    statusEl.style.color = "var(--red)"; statusEl.textContent = "Minimum amount is $1.00"; return;
+  }
+  statusEl.style.color = "var(--muted)"; statusEl.textContent = "Creating order…";
+  document.getElementById("topup-proceed-btn").disabled = true;
+  try {
+    const d = await api("/api/wallet/create-order", {
+      method: "POST", body: JSON.stringify({ amount })
+    });
+    const order = d.order;
+    const deeplink = d.deeplink;
+    // Show checkout step
+    document.getElementById("topup-step-choose").style.display = "none";
+    document.getElementById("topup-step-checkout").style.display = "";
+    document.getElementById("checkout-amount-display").textContent = `$${amount.toFixed(2)}`;
+    document.getElementById("checkout-order-id").textContent = `Order: ${order.order_id}`;
+    document.getElementById("checkout-status-area").style.display = "";
+    document.getElementById("checkout-success").style.display = "none";
+    document.getElementById("checkout-status-text").textContent = "Waiting for payment confirmation…";
+    // Set Bitget Pay deeplink
+    const bgLink = deeplink ? `https://bkcode.vip/?deep_link_value=${encodeURIComponent(deeplink)}` : "#";
+    document.getElementById("checkout-pay-link").href = bgLink;
+    if (!deeplink) {
+      document.getElementById("checkout-pay-link").style.display = "none";
+      document.getElementById("checkout-status-text").textContent = "No deeplink returned — contact support.";
+    }
+    // Start polling
+    startOrderPolling(order.order_id, amount);
+  } catch(e) {
+    statusEl.style.color = "var(--red)"; statusEl.textContent = e.message;
+  } finally {
+    document.getElementById("topup-proceed-btn").disabled = false;
+  }
+});
+
+let _orderPollTimer = null;
+function startOrderPolling(orderId, amount) {
+  if (_orderPollTimer) clearInterval(_orderPollTimer);
+  let ticks = 0;
+  _orderPollTimer = setInterval(async () => {
+    ticks++;
+    if (ticks > 120) { clearInterval(_orderPollTimer); return; } // stop after ~10min
+    try {
+      await pollOrder(orderId, amount);
+    } catch {}
+  }, 5000);
+}
+async function pollOrder(orderId, amount) {
+  const d = await api(`/api/wallet/order/${orderId}`);
+  const order = d.order;
+  if (order.status === "paid") {
+    if (_orderPollTimer) { clearInterval(_orderPollTimer); _orderPollTimer = null; }
+    const credited = Number(order.amount_usd || amount || 0);
+    document.getElementById("checkout-status-area").style.display = "none";
+    document.getElementById("checkout-success").style.display = "";
+    document.getElementById("checkout-success-msg").textContent =
+      `$${credited.toFixed(2)} has been added to your wallet!`;
+    await loadWallet();
+    toast(`✓ $${credited.toFixed(2)} credited to your wallet!`, "success");
+    S.wallet.payment_orders = (S.wallet.payment_orders || []).map(o =>
+      o.order_id === orderId ? order : o
+    );
+    renderWallet();
+  } else if (order.status === "failed") {
+    if (_orderPollTimer) { clearInterval(_orderPollTimer); _orderPollTimer = null; }
+    document.getElementById("checkout-status-text").textContent = "Payment failed or expired.";
+    document.getElementById("checkout-spinner").style.display = "none";
+  }
+  return order;
+}
 
 // ════════════════════════════════════════════
 //  SETTINGS
