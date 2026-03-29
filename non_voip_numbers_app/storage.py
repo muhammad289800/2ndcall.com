@@ -6,7 +6,20 @@ from typing import Any
 
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DEFAULT_DB_PATH = os.path.join(BASE_DIR, "non_voip_numbers.db")
+
+def _resolve_db_path() -> str:
+    """Resolve SQLite DB path — prefer a Railway-style persistent volume mount at /data,
+    then fall back to the NUMBER_APP_DB_PATH env var, then the app directory."""
+    explicit = os.environ.get("NUMBER_APP_DB_PATH", "").strip()
+    if explicit:
+        os.makedirs(os.path.dirname(os.path.abspath(explicit)), exist_ok=True)
+        return explicit
+    # Railway persistent volume is typically mounted at /data
+    if os.path.isdir("/data"):
+        return "/data/non_voip_numbers.db"
+    return os.path.join(BASE_DIR, "non_voip_numbers.db")
+
+DEFAULT_DB_PATH = _resolve_db_path()
 
 
 def utc_now() -> str:

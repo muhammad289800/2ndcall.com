@@ -3,121 +3,208 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Non-VoIP Number Manager</title>
+  <title>2ndCall — Virtual Phone Dashboard</title>
   <style>
-    body { font-family: Arial, sans-serif; margin: 0; background: #f5f7fb; color: #1d2433; }
-    .container { max-width: 1220px; margin: 24px auto; padding: 0 16px; }
-    .header { margin-bottom: 18px; }
-    h1 { margin: 0 0 6px 0; font-size: 28px; }
-    .muted { color: #5b6578; font-size: 14px; }
-    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; }
-    .card { background: white; border-radius: 12px; padding: 16px; box-shadow: 0 2px 8px rgba(20, 30, 60, 0.08); }
-    .card h2 { margin-top: 0; font-size: 18px; }
-    label { display: block; font-size: 13px; margin-bottom: 5px; color: #4d5566; }
-    input, select, textarea, button { width: 100%; box-sizing: border-box; border-radius: 8px; border: 1px solid #c5cede; padding: 10px; font-size: 14px; }
-    textarea { min-height: 78px; resize: vertical; }
-    button { background: #1f64ff; color: white; border: none; cursor: pointer; font-weight: 600; }
-    button:hover { background: #1149cb; }
-    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px; }
-    .row-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 10px; }
+    *, *::before, *::after { box-sizing: border-box; }
+    :root {
+      --bg: #0d1117;
+      --surface: #161b22;
+      --surface2: #21262d;
+      --border: #30363d;
+      --text: #e6edf3;
+      --muted: #8b949e;
+      --accent: #1f6feb;
+      --accent-hover: #388bfd;
+      --green: #3fb950;
+      --red: #f85149;
+      --yellow: #d29922;
+      --radius: 10px;
+    }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 0; background: var(--bg); color: var(--text); min-height: 100vh; }
+
+    /* ── Login overlay ── */
+    #login-overlay {
+      position: fixed; inset: 0; background: var(--bg);
+      display: flex; align-items: center; justify-content: center; z-index: 100;
+    }
+    #login-overlay.hidden { display: none; }
+    .login-box {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 16px; padding: 40px 36px; width: 100%; max-width: 380px; text-align: center;
+    }
+    .login-box .logo { font-size: 32px; font-weight: 800; color: var(--accent); margin-bottom: 4px; }
+    .login-box .tagline { color: var(--muted); font-size: 14px; margin-bottom: 28px; }
+    .login-box input { width: 100%; padding: 11px 14px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface2); color: var(--text); font-size: 15px; margin-bottom: 14px; outline: none; }
+    .login-box input:focus { border-color: var(--accent); }
+    .login-box button { width: 100%; padding: 12px; border-radius: 8px; border: none; background: var(--accent); color: white; font-size: 15px; font-weight: 600; cursor: pointer; }
+    .login-box button:hover { background: var(--accent-hover); }
+    .login-box .login-err { color: var(--red); font-size: 13px; margin-top: 10px; min-height: 16px; }
+
+    /* ── Main app ── */
+    header {
+      background: var(--surface); border-bottom: 1px solid var(--border);
+      padding: 0 24px; height: 56px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 50;
+    }
+    .header-logo { font-size: 20px; font-weight: 800; color: var(--accent); }
+    .header-logo span { color: var(--muted); font-weight: 400; font-size: 14px; margin-left: 10px; }
+    .header-right { display: flex; align-items: center; gap: 12px; }
+    .badge { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; padding: 3px 9px; border-radius: 20px; font-weight: 600; }
+    .badge-green { background: rgba(63,185,80,.15); color: var(--green); }
+    .badge-red { background: rgba(248,81,73,.15); color: var(--red); }
+    .badge-yellow { background: rgba(210,153,34,.15); color: var(--yellow); }
+    .btn-sm { padding: 6px 14px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface2); color: var(--text); font-size: 13px; cursor: pointer; }
+    .btn-sm:hover { border-color: var(--muted); }
+
+    .container { max-width: 1300px; margin: 0 auto; padding: 24px 20px; }
+
+    /* ── Stats bar ── */
+    .stats-bar { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 24px; }
+    .stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; }
+    .stat-label { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
+    .stat-value { font-size: 24px; font-weight: 700; margin-top: 4px; }
+    .stat-value.green { color: var(--green); }
+    .stat-value.accent { color: var(--accent-hover); }
+
+    /* ── Tabs ── */
+    .tabs { display: flex; gap: 0; border-bottom: 1px solid var(--border); margin-bottom: 20px; overflow-x: auto; }
+    .tab { padding: 10px 18px; font-size: 14px; font-weight: 500; color: var(--muted); cursor: pointer; border-bottom: 2px solid transparent; white-space: nowrap; transition: all .15s; }
+    .tab:hover { color: var(--text); }
+    .tab.active { color: var(--accent-hover); border-bottom-color: var(--accent-hover); }
+
+    .tab-pane { display: none; }
+    .tab-pane.active { display: block; }
+
+    /* ── Cards & forms ── */
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; }
+    .card h3 { margin: 0 0 16px 0; font-size: 15px; font-weight: 600; }
+    label { display: block; font-size: 12px; font-weight: 500; color: var(--muted); margin-bottom: 5px; margin-top: 10px; text-transform: uppercase; letter-spacing: .3px; }
+    label:first-child { margin-top: 0; }
+    input, select, textarea {
+      width: 100%; padding: 9px 12px; border-radius: 7px;
+      border: 1px solid var(--border); background: var(--surface2); color: var(--text);
+      font-size: 14px; outline: none; transition: border-color .15s;
+    }
+    input:focus, select:focus, textarea:focus { border-color: var(--accent); }
+    textarea { min-height: 80px; resize: vertical; }
+    .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .row3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+    .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 10px 18px; border-radius: 8px; border: none; font-size: 14px; font-weight: 600; cursor: pointer; width: 100%; margin-top: 12px; transition: background .15s; }
+    .btn-primary { background: var(--accent); color: white; }
+    .btn-primary:hover { background: var(--accent-hover); }
+    .btn-secondary { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
+    .btn-secondary:hover { border-color: var(--muted); }
+    .btn-danger { background: rgba(248,81,73,.15); color: var(--red); border: 1px solid rgba(248,81,73,.3); }
+    .btn-danger:hover { background: rgba(248,81,73,.25); }
+    .status-msg { font-size: 13px; min-height: 18px; margin-top: 8px; }
+    .status-msg.ok { color: var(--green); }
+    .status-msg.err { color: var(--red); }
+
+    /* ── Tables ── */
+    .table-wrap { overflow-x: auto; margin-top: 12px; }
     table { width: 100%; border-collapse: collapse; font-size: 13px; }
-    th, td { text-align: left; padding: 8px; border-bottom: 1px solid #e6ebf3; vertical-align: top; }
-    th { background: #f6f8fc; }
-    .chip { display: inline-block; padding: 3px 8px; border-radius: 999px; font-size: 12px; background: #eef3ff; color: #2745a4; }
-    .danger { background: #b51f2f; }
-    .danger:hover { background: #8f1422; }
-    .status { margin-top: 8px; font-size: 13px; min-height: 18px; }
-    .ok { color: #1a7f37; }
-    .err { color: #b00020; }
-    .actions { display: flex; gap: 6px; }
-    .actions button { padding: 6px 8px; font-size: 12px; width: auto; }
-    .small { font-size: 12px; color: #596271; }
-    .balance { font-size: 24px; font-weight: 700; margin: 8px 0 12px 0; }
-    code { background: #eef1f7; padding: 2px 5px; border-radius: 4px; }
+    th { background: var(--surface2); color: var(--muted); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .5px; padding: 8px 10px; text-align: left; }
+    td { padding: 9px 10px; border-top: 1px solid var(--border); vertical-align: top; word-break: break-word; }
+    tr:hover td { background: rgba(255,255,255,.02); }
+    .chip { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: 11px; font-weight: 600; }
+    .chip-blue { background: rgba(31,111,235,.2); color: var(--accent-hover); }
+    .chip-green { background: rgba(63,185,80,.15); color: var(--green); }
+    .chip-red { background: rgba(248,81,73,.15); color: var(--red); }
+    .chip-gray { background: var(--surface2); color: var(--muted); }
+    .btn-release { padding: 4px 10px; border-radius: 6px; border: 1px solid rgba(248,81,73,.3); background: transparent; color: var(--red); font-size: 12px; font-weight: 600; cursor: pointer; }
+    .btn-release:hover { background: rgba(248,81,73,.15); }
+
+    /* ── Inline top-up form ── */
+    .topup-row { display: flex; gap: 8px; align-items: flex-end; }
+    .topup-row input, .topup-row select { flex: 1; }
+    .topup-row .btn { margin-top: 0; width: auto; padding: 9px 16px; }
+
+    /* ── Webhook display ── */
+    .wh-item { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 6px 0; }
+    .wh-url { background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 7px 10px; font-size: 12px; font-family: monospace; color: var(--text); flex: 1; overflow-x: auto; white-space: nowrap; }
+    .btn-copy { padding: 5px 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface2); color: var(--muted); font-size: 12px; cursor: pointer; white-space: nowrap; }
+    .btn-copy:hover { color: var(--text); }
+
+    /* ── Provider pricing table ── */
+    .pricing-badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; }
+    .pricing-yes { background: rgba(63,185,80,.15); color: var(--green); }
+    .pricing-no { background: var(--surface2); color: var(--muted); }
+
+    /* ── Scroll reveal + misc ── */
+    .empty { color: var(--muted); text-align: center; padding: 20px; font-size: 13px; }
+    .section-title { font-size: 18px; font-weight: 700; margin: 0 0 16px 0; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+    .dot-green { background: var(--green); }
+    .dot-red { background: var(--red); }
+    .dot-yellow { background: var(--yellow); }
+    .auto-badge { font-size: 11px; color: var(--muted); margin-left: 8px; }
+    @media (max-width: 640px) {
+      .row2, .row3 { grid-template-columns: 1fr; }
+      .stats-bar { grid-template-columns: 1fr 1fr; }
+    }
   </style>
 </head>
 <body>
-  <div class="container">
-    <div class="header">
-      <h1>Non-VoIP Virtual Number Manager</h1>
-      <div class="muted">Order numbers, send/receive SMS and calls, and control a prepaid wallet from one dashboard.</div>
-    </div>
 
+<!-- ── Login overlay ── -->
+<div id="login-overlay">
+  <div class="login-box">
+    <div class="logo">2ndCall</div>
+    <div class="tagline">Virtual Phone Dashboard</div>
+    <input type="password" id="login-token" placeholder="Admin token" autocomplete="current-password" />
+    <button id="login-btn">Sign in</button>
+    <div class="login-err" id="login-err"></div>
+  </div>
+</div>
+
+<!-- ── Main app ── -->
+<header>
+  <div class="header-logo">2ndCall <span>Virtual Phone Dashboard</span></div>
+  <div class="header-right">
+    <span id="hdr-balance" style="font-size:14px;font-weight:700;color:var(--green)">$0.00</span>
+    <span id="hdr-live" class="badge badge-green" style="display:none">● Live</span>
+    <button class="btn-sm" id="logout-btn">Sign out</button>
+  </div>
+</header>
+
+<div class="container">
+  <!-- Stats bar -->
+  <div class="stats-bar">
+    <div class="stat-card">
+      <div class="stat-label">Wallet balance</div>
+      <div class="stat-value green" id="stat-balance">$0.00</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Managed numbers</div>
+      <div class="stat-value accent" id="stat-numbers">0</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Messages received</div>
+      <div class="stat-value" id="stat-msgs">0</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Calls received</div>
+      <div class="stat-value" id="stat-calls">0</div>
+    </div>
+  </div>
+
+  <!-- Tabs -->
+  <div class="tabs">
+    <div class="tab active" data-tab="numbers">Numbers</div>
+    <div class="tab" data-tab="messaging">Send SMS</div>
+    <div class="tab" data-tab="calls">Make Call</div>
+    <div class="tab" data-tab="inbox">Inbox <span class="auto-badge" id="inbox-auto-label">auto-refresh</span></div>
+    <div class="tab" data-tab="wallet">Wallet</div>
+    <div class="tab" data-tab="webhooks">Webhooks</div>
+    <div class="tab" data-tab="pricing">Providers</div>
+  </div>
+
+  <!-- Numbers tab -->
+  <div class="tab-pane active" id="tab-numbers">
     <div class="grid">
       <div class="card">
-        <h2>Provider setup + low-cost ranking</h2>
-        <table>
-          <thead>
-            <tr>
-              <th>Rank</th>
-              <th>Provider</th>
-              <th>Est. local monthly</th>
-              <th>Integrated</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for details in pricing_rows %}
-            <tr>
-              <td>{{ details.rank }}</td>
-              <td>
-                <strong>{{ details.label }}</strong>
-                <div class="small">{{ details.notes }}</div>
-              </td>
-              <td>{{ details.estimated_local_number_monthly_usd }}</td>
-              <td>{% if details.integrated_in_app %}Yes{% else %}No{% endif %}</td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-        <p class="small">Enable real APIs with environment variables in `.env` (sample file included). Keep <code>mock</code> for safe local testing.</p>
-      </div>
-      <div class="card">
-        <h2>Wallet + provider balances</h2>
-        <div class="small">App wallet balance (required for ordering numbers/messages/calls)</div>
-        <div class="balance" id="wallet_balance">$0.00</div>
-        <div class="row">
-          <div>
-            <label>Top-up amount (USD)</label>
-            <input id="topup_amount" value="20" />
-          </div>
-          <div>
-            <label>Method label</label>
-            <select id="topup_method">
-              <option value="manual">manual</option>
-              <option value="bank_transfer">bank_transfer</option>
-              <option value="card">card</option>
-            </select>
-          </div>
-        </div>
-        <button id="topup_btn">Add funds</button>
-        <div id="wallet_status" class="status"></div>
-        <h3>Provider account balance (real API accounts)</h3>
-        <button id="refresh_provider_balances_btn" style="background:#5f6c84;">Refresh provider balances</button>
-        <table style="margin-top:8px;">
-          <thead>
-            <tr><th>Provider</th><th>Balance</th><th>Notes</th></tr>
-          </thead>
-          <tbody id="provider_balances">
-            <tr><td colspan="3" class="small">No data yet.</td></tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
-
-    <div class="card" style="margin-top: 16px;">
-      <h2>Webhook setup for receiving calls/messages</h2>
-      <div class="small">Configure these URLs in Twilio/Telnyx consoles so inbound messages and calls show up below.</div>
-      <ul class="small">
-        <li>Twilio SMS webhook: <code id="twilio_msg_webhook"></code></li>
-        <li>Twilio Voice webhook: <code id="twilio_voice_webhook"></code></li>
-        <li>Telnyx event webhook: <code id="telnyx_events_webhook"></code></li>
-      </ul>
-    </div>
-
-    <div class="grid" style="margin-top: 16px;">
-      <div class="card">
-        <h2>Search & order numbers</h2>
-        <div class="row">
+        <h3>Search available numbers</h3>
+        <div class="row2">
           <div>
             <label>Provider</label>
             <select id="provider"></select>
@@ -127,101 +214,111 @@
             <input id="country" value="US" />
           </div>
         </div>
-        <div class="row-3">
+        <div class="row3">
           <div>
-            <label>Area code (optional)</label>
+            <label>Area code</label>
             <input id="area_code" placeholder="212" />
           </div>
           <div>
-            <label>Limit</label>
-            <input id="limit" value="10" />
+            <label>Result limit</label>
+            <input id="limit" value="10" type="number" />
           </div>
           <div>
             <label>Non-VoIP only</label>
             <select id="non_voip_only">
-              <option value="true">true</option>
-              <option value="false">false</option>
+              <option value="true">Yes</option>
+              <option value="false">No</option>
             </select>
           </div>
         </div>
-        <div class="row">
+        <div class="row2">
           <div>
             <label>Require SMS</label>
             <select id="require_sms">
-              <option value="true">true</option>
-              <option value="false">false</option>
+              <option value="true">Yes</option>
+              <option value="false">No</option>
             </select>
           </div>
           <div>
             <label>Require Voice</label>
             <select id="require_voice">
-              <option value="true">true</option>
-              <option value="false">false</option>
+              <option value="true">Yes</option>
+              <option value="false">No</option>
             </select>
           </div>
         </div>
-        <button id="search_btn">Search numbers</button>
-        <div id="search_status" class="status"></div>
+        <button class="btn btn-primary" id="search_btn">Search numbers</button>
+        <div class="status-msg" id="search_status"></div>
+
+        <div class="table-wrap" id="search_results_wrap" style="display:none;margin-top:16px;">
+          <h3 style="margin:0 0 8px 0;font-size:14px;">Search results</h3>
+          <table>
+            <thead>
+              <tr><th>Number</th><th>Type</th><th>Caps</th><th>Region</th><th>Monthly</th><th>Action</th></tr>
+            </thead>
+            <tbody id="search_results">
+              <tr><td colspan="6" class="empty">No results yet.</td></tr>
+            </tbody>
+          </table>
+        </div>
       </div>
+
       <div class="card">
-        <h2>Managed numbers</h2>
-        <button id="refresh_numbers_btn">Refresh managed numbers</button>
-        <button id="sync_provider_btn" style="margin-top:8px; background:#5f6c84;">Sync from selected provider</button>
-        <div id="numbers_status" class="status"></div>
-        <table>
-          <thead>
-            <tr>
-              <th>ID</th>
-              <th>Provider</th>
-              <th>Phone</th>
-              <th>Line type</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody id="managed_numbers">
-            <tr><td colspan="5" class="small">No managed numbers yet.</td></tr>
-          </tbody>
-        </table>
+        <h3>Managed numbers</h3>
+        <div class="row2">
+          <button class="btn btn-secondary" id="refresh_numbers_btn" style="margin-top:0;">Refresh</button>
+          <button class="btn btn-secondary" id="sync_provider_btn" style="margin-top:0;">Sync from provider</button>
+        </div>
+        <div class="status-msg" id="numbers_status"></div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>ID</th><th>Provider</th><th>Number</th><th>Type</th><th></th></tr>
+            </thead>
+            <tbody id="managed_numbers">
+              <tr><td colspan="5" class="empty">No numbers yet.</td></tr>
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
+  </div>
 
-    <div class="card" style="margin-top: 16px;">
-      <h2>Search results</h2>
-      <table>
-        <thead>
-          <tr>
-            <th>Phone number</th>
-            <th>Line type</th>
-            <th>Capabilities</th>
-            <th>Region</th>
-            <th>Monthly est.</th>
-            <th>Action</th>
-          </tr>
-        </thead>
-        <tbody id="search_results">
-          <tr><td colspan="6" class="small">No results yet.</td></tr>
-        </tbody>
-      </table>
-    </div>
-
-    <div class="grid" style="margin-top: 16px;">
+  <!-- Messaging tab -->
+  <div class="tab-pane" id="tab-messaging">
+    <div class="grid">
       <div class="card">
-        <h2>Send message (SMS)</h2>
+        <h3>Send SMS</h3>
         <label>Provider</label>
         <select id="msg_provider"></select>
-        <label style="margin-top:8px;">From number</label>
+        <label>From number</label>
         <select id="msg_from"></select>
-        <label style="margin-top:8px;">To number (E.164)</label>
+        <label>To number (E.164)</label>
         <input id="msg_to" placeholder="+15551231234" />
-        <label style="margin-top:8px;">Message text</label>
+        <label>Message text</label>
         <textarea id="msg_body" placeholder="Your message"></textarea>
-        <button id="send_msg_btn">Send message</button>
-        <div id="msg_status" class="status"></div>
+        <button class="btn btn-primary" id="send_msg_btn">Send message</button>
+        <div class="status-msg" id="msg_status"></div>
       </div>
-
       <div class="card">
-        <h2>Start outbound call</h2>
-        <div class="row">
+        <h3>Outbound message log</h3>
+        <button class="btn btn-secondary" id="refresh_outbound_msgs_btn" style="margin-top:0;">Refresh</button>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Time</th><th>Provider</th><th>From</th><th>To</th><th>Body</th><th>Status</th></tr></thead>
+            <tbody id="outbound_messages"><tr><td colspan="6" class="empty">No messages yet.</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Calls tab -->
+  <div class="tab-pane" id="tab-calls">
+    <div class="grid">
+      <div class="card">
+        <h3>Start outbound call</h3>
+        <div class="row2">
           <div>
             <label>Provider</label>
             <select id="call_provider"></select>
@@ -233,44 +330,613 @@
         </div>
         <label>To number (E.164)</label>
         <input id="call_to" placeholder="+15551231234" />
-        <label style="margin-top:8px;">Estimated minutes (for wallet reserve)</label>
-        <input id="call_minutes" value="1" />
-        <label style="margin-top:8px;">Call script / spoken text (Twilio uses this directly)</label>
-        <textarea id="call_text" placeholder="This is a test call from the number manager app."></textarea>
-        <button id="start_call_btn">Start call</button>
-        <div id="call_status" class="status"></div>
+        <label>Estimated minutes (wallet reserve)</label>
+        <input id="call_minutes" value="1" type="number" />
+        <label>Spoken text (TTS for Twilio)</label>
+        <textarea id="call_text" placeholder="This is a test call from 2ndCall."></textarea>
+        <button class="btn btn-primary" id="start_call_btn">Start call</button>
+        <div class="status-msg" id="call_status"></div>
       </div>
-    </div>
-
-    <div class="grid" style="margin-top: 16px;">
       <div class="card">
-        <h2>Received messages inbox</h2>
-        <button id="refresh_inbound_messages_btn">Refresh inbound messages</button>
-        <table style="margin-top:8px;">
-          <thead>
-            <tr><th>Time</th><th>Provider</th><th>From</th><th>To</th><th>Body</th><th>Status</th></tr>
-          </thead>
-          <tbody id="inbound_messages">
-            <tr><td colspan="6" class="small">No inbound messages yet.</td></tr>
-          </tbody>
-        </table>
-      </div>
-
-      <div class="card">
-        <h2>Received calls inbox</h2>
-        <button id="refresh_inbound_calls_btn">Refresh inbound calls</button>
-        <table style="margin-top:8px;">
-          <thead>
-            <tr><th>Time</th><th>Provider</th><th>From</th><th>To</th><th>Status</th><th>Call ID</th></tr>
-          </thead>
-          <tbody id="inbound_calls">
-            <tr><td colspan="6" class="small">No inbound calls yet.</td></tr>
-          </tbody>
-        </table>
+        <h3>Outbound call log</h3>
+        <button class="btn btn-secondary" id="refresh_outbound_calls_btn" style="margin-top:0;">Refresh</button>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Time</th><th>Provider</th><th>From</th><th>To</th><th>Status</th><th>Call ID</th></tr></thead>
+            <tbody id="outbound_calls"><tr><td colspan="6" class="empty">No calls yet.</td></tr></tbody>
+          </table>
+        </div>
       </div>
     </div>
   </div>
-  <script src="{{ url_for('static', filename='app.js') }}"></script>
+
+  <!-- Inbox tab -->
+  <div class="tab-pane" id="tab-inbox">
+    <div class="grid">
+      <div class="card">
+        <h3>Inbound messages <span class="auto-badge">● auto-refreshing every 15s</span></h3>
+        <button class="btn btn-secondary" id="refresh_inbound_messages_btn" style="margin-top:0;">Refresh now</button>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Time</th><th>Provider</th><th>From</th><th>To</th><th>Body</th><th>Status</th></tr></thead>
+            <tbody id="inbound_messages"><tr><td colspan="6" class="empty">No inbound messages yet.</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="card">
+        <h3>Inbound calls <span class="auto-badge">● auto-refreshing every 15s</span></h3>
+        <button class="btn btn-secondary" id="refresh_inbound_calls_btn" style="margin-top:0;">Refresh now</button>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Time</th><th>Provider</th><th>From</th><th>To</th><th>Status</th><th>Call ID</th></tr></thead>
+            <tbody id="inbound_calls"><tr><td colspan="6" class="empty">No inbound calls yet.</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Wallet tab -->
+  <div class="tab-pane" id="tab-wallet">
+    <div class="grid">
+      <div class="card">
+        <h3>App wallet</h3>
+        <div class="stat-label" style="font-size:12px;text-transform:uppercase;letter-spacing:.5px;">Current balance</div>
+        <div class="stat-value green" id="wallet_balance" style="font-size:36px;margin:8px 0 20px 0;">$0.00</div>
+        <label>Top-up amount (USD)</label>
+        <div class="topup-row">
+          <input id="topup_amount" value="20" type="number" />
+          <select id="topup_method">
+            <option value="manual">Manual</option>
+            <option value="bank_transfer">Bank transfer</option>
+            <option value="card">Card</option>
+          </select>
+          <button class="btn btn-primary" id="topup_btn">Add funds</button>
+        </div>
+        <div class="status-msg" id="wallet_status"></div>
+
+        <h3 style="margin-top:24px;">Provider account balances</h3>
+        <button class="btn btn-secondary" id="refresh_provider_balances_btn" style="margin-top:0;">Refresh</button>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Provider</th><th>Balance</th><th>Notes</th></tr></thead>
+            <tbody id="provider_balances"><tr><td colspan="3" class="empty">No data yet.</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="card">
+        <h3>Transaction history</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Time</th><th>Type</th><th>Provider</th><th>Description</th><th>Amount</th></tr></thead>
+            <tbody id="wallet_transactions"><tr><td colspan="5" class="empty">No transactions yet.</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Webhooks tab -->
+  <div class="tab-pane" id="tab-webhooks">
+    <div class="card" style="max-width:700px;">
+      <h3>Webhook URLs</h3>
+      <p style="font-size:13px;color:var(--muted);margin:0 0 16px 0;">
+        Configure these URLs in your Twilio / Telnyx consoles so inbound messages and calls are received.
+      </p>
+      <label>Twilio SMS webhook (Message → Webhook)</label>
+      <div class="wh-item">
+        <div class="wh-url" id="twilio_msg_webhook"></div>
+        <button class="btn-copy" data-copy="twilio_msg_webhook">Copy</button>
+      </div>
+      <label>Twilio Voice webhook (Voice → "A call comes in")</label>
+      <div class="wh-item">
+        <div class="wh-url" id="twilio_voice_webhook"></div>
+        <button class="btn-copy" data-copy="twilio_voice_webhook">Copy</button>
+      </div>
+      <label>Telnyx Events webhook</label>
+      <div class="wh-item">
+        <div class="wh-url" id="telnyx_events_webhook"></div>
+        <button class="btn-copy" data-copy="telnyx_events_webhook">Copy</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Pricing/Providers tab -->
+  <div class="tab-pane" id="tab-pricing">
+    <div class="card">
+      <h3>Provider comparison</h3>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Rank</th><th>Provider</th><th>Monthly number est.</th><th>SMS outbound</th><th>Call/min</th><th>Integrated</th><th>Configured</th></tr>
+          </thead>
+          <tbody id="pricing_tbody">
+            {% for details in pricing_rows %}
+            <tr>
+              <td>{{ details.rank }}</td>
+              <td><strong>{{ details.label }}</strong><br><span style="font-size:11px;color:var(--muted)">{{ details.notes }}</span></td>
+              <td>{{ details.estimated_local_number_monthly_usd }}</td>
+              <td>—</td>
+              <td>—</td>
+              <td><span class="pricing-badge {% if details.integrated_in_app %}pricing-yes{% else %}pricing-no{% endif %}">{% if details.integrated_in_app %}Yes{% else %}No{% endif %}</span></td>
+              <td id="conf-{{ details.label | lower }}">—</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <p style="font-size:12px;color:var(--muted);margin-top:16px;">
+        Set environment variables <code style="background:var(--surface2);padding:2px 5px;border-radius:4px;">TELNYX_API_KEY</code>,
+        <code style="background:var(--surface2);padding:2px 5px;border-radius:4px;">TWILIO_ACCOUNT_SID</code> +
+        <code style="background:var(--surface2);padding:2px 5px;border-radius:4px;">TWILIO_AUTH_TOKEN</code> to enable real providers.
+        Use <code style="background:var(--surface2);padding:2px 5px;border-radius:4px;">mock</code> for local testing.
+      </p>
+    </div>
+  </div>
+
+</div><!-- end .container -->
+
+<script>
+const state = {
+  providers: [],
+  numbers: [],
+  searchResults: [],
+  inboundMessages: [],
+  inboundCalls: [],
+  wallet: { balance: 0, transactions: [] },
+  providerBalances: [],
+};
+
+let _sessionToken = sessionStorage.getItem("2ndcall_token") || "";
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+function esc(v) {
+  return String(v ?? "")
+    .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
+    .replace(/"/g,"&quot;").replace(/'/g,"&#039;");
+}
+
+function fmt(ts) {
+  if (!ts) return "—";
+  try { return new Date(ts).toLocaleString(); } catch { return ts; }
+}
+
+function fmtAmt(n) {
+  const v = Number(n);
+  if (isNaN(v)) return "—";
+  const cls = v >= 0 ? "color:var(--green)" : "color:var(--red)";
+  return `<span style="${cls}">${v >= 0 ? "+" : ""}$${Math.abs(v).toFixed(4)}</span>`;
+}
+
+async function api(url, options = {}) {
+  const headers = { "Content-Type": "application/json" };
+  if (_sessionToken) headers["X-Admin-Token"] = _sessionToken;
+  const resp = await fetch(url, { headers, ...options });
+  const data = await resp.json();
+  if (!resp.ok) throw new Error(data.error || `Error ${resp.status}`);
+  return data;
+}
+
+function setStatus(id, text, isErr = false) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.textContent = text || "";
+  el.className = `status-msg ${isErr ? "err" : "ok"}`;
+}
+
+// ── Login ────────────────────────────────────────────────────────────────────
+
+async function checkAuth() {
+  try {
+    const d = await api("/api/auth/status");
+    if (d.authed) { showApp(); return; }
+    if (!d.token_required) { showApp(); return; }
+  } catch {}
+  showLogin();
+}
+
+function showLogin() {
+  document.getElementById("login-overlay").classList.remove("hidden");
+}
+function showApp() {
+  document.getElementById("login-overlay").classList.add("hidden");
+  document.getElementById("hdr-live").style.display = "";
+  init();
+}
+
+document.getElementById("login-btn").addEventListener("click", async () => {
+  const token = document.getElementById("login-token").value.trim();
+  document.getElementById("login-err").textContent = "";
+  try {
+    _sessionToken = token;
+    await api("/api/auth/login", { method: "POST", body: JSON.stringify({ token }) });
+    sessionStorage.setItem("2ndcall_token", token);
+    showApp();
+  } catch (e) {
+    _sessionToken = "";
+    document.getElementById("login-err").textContent = e.message;
+  }
+});
+
+document.getElementById("login-token").addEventListener("keydown", e => {
+  if (e.key === "Enter") document.getElementById("login-btn").click();
+});
+
+document.getElementById("logout-btn").addEventListener("click", async () => {
+  await api("/api/auth/logout", { method: "POST" }).catch(() => {});
+  sessionStorage.removeItem("2ndcall_token");
+  _sessionToken = "";
+  location.reload();
+});
+
+// ── Tabs ─────────────────────────────────────────────────────────────────────
+
+document.querySelectorAll(".tab").forEach(tab => {
+  tab.addEventListener("click", () => {
+    document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
+    document.querySelectorAll(".tab-pane").forEach(p => p.classList.remove("active"));
+    tab.classList.add("active");
+    document.getElementById("tab-" + tab.dataset.tab).classList.add("active");
+  });
+});
+
+// ── Provider selects ─────────────────────────────────────────────────────────
+
+function refreshProviderSelects() {
+  const opts = state.providers
+    .map(p => `<option value="${esc(p.provider)}">${esc(p.label)}${p.configured ? "" : " (not configured)"}</option>`)
+    .join("");
+  ["provider","msg_provider","call_provider"].forEach(id => {
+    document.getElementById(id).innerHTML = opts;
+  });
+  syncFromNumbers();
+}
+
+function syncFromNumbers() {
+  const msgProv = document.getElementById("msg_provider").value;
+  const callProv = document.getElementById("call_provider").value;
+  const mkOpts = prov => state.numbers
+    .filter(n => n.provider === prov)
+    .map(n => `<option value="${esc(n.phone_number)}">${esc(n.phone_number)}</option>`)
+    .join("") || '<option value="">No numbers for this provider</option>';
+  document.getElementById("msg_from").innerHTML = mkOpts(msgProv);
+  document.getElementById("call_from").innerHTML = mkOpts(callProv);
+}
+
+// ── Render helpers ────────────────────────────────────────────────────────────
+
+function renderNumbers() {
+  const tbody = document.getElementById("managed_numbers");
+  document.getElementById("stat-numbers").textContent = state.numbers.length;
+  if (!state.numbers.length) {
+    tbody.innerHTML = '<tr><td colspan="5" class="empty">No managed numbers yet.</td></tr>';
+    syncFromNumbers(); return;
+  }
+  tbody.innerHTML = state.numbers.map(n => `
+    <tr>
+      <td>${esc(n.id)}</td>
+      <td><span class="chip chip-blue">${esc(n.provider)}</span></td>
+      <td style="font-family:monospace">${esc(n.phone_number)}</td>
+      <td><span class="chip ${n.line_type === "voip" ? "chip-red" : "chip-green"}">${esc(n.line_type || "unknown")}</span></td>
+      <td><button class="btn-release" data-rid="${esc(n.id)}">Release</button></td>
+    </tr>`).join("");
+  tbody.querySelectorAll(".btn-release").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      try {
+        await api(`/api/numbers/${btn.dataset.rid}/release`, { method: "POST" });
+        setStatus("numbers_status", `Released number ID ${btn.dataset.rid}.`);
+        await loadNumbers();
+      } catch (e) { setStatus("numbers_status", e.message, true); }
+    });
+  });
+  syncFromNumbers();
+}
+
+function renderWallet() {
+  const bal = Number(state.wallet.balance || 0);
+  const fmt2 = v => `$${v.toFixed(2)}`;
+  document.getElementById("wallet_balance").textContent = fmt2(bal);
+  document.getElementById("stat-balance").textContent = fmt2(bal);
+  document.getElementById("hdr-balance").textContent = fmt2(bal);
+
+  const tbody = document.getElementById("wallet_transactions");
+  const txs = state.wallet.transactions || [];
+  if (!txs.length) { tbody.innerHTML = '<tr><td colspan="5" class="empty">No transactions yet.</td></tr>'; return; }
+  tbody.innerHTML = txs.map(t => `
+    <tr>
+      <td>${esc(fmt(t.created_at))}</td>
+      <td><span class="chip chip-gray">${esc(t.tx_type)}</span></td>
+      <td>${esc(t.provider || "—")}</td>
+      <td>${esc(t.description || "—")}</td>
+      <td>${fmtAmt(t.amount)}</td>
+    </tr>`).join("");
+}
+
+function renderProviderBalances() {
+  const tbody = document.getElementById("provider_balances");
+  if (!state.providerBalances.length) {
+    tbody.innerHTML = '<tr><td colspan="3" class="empty">Click Refresh to load.</td></tr>'; return;
+  }
+  tbody.innerHTML = state.providerBalances.map(item => {
+    const d = item.account_balance || {};
+    const bal = d.balance === null || d.balance === undefined ? "n/a" :
+      `${esc(d.currency || "USD")} ${Number(d.balance).toFixed(2)}`;
+    const note = d.error ? `<span style="color:var(--red)">${esc(d.error)}</span>` :
+      d.source ? `<span style="color:var(--muted)">${esc(d.source)}</span>` : "";
+    return `<tr><td>${esc(item.label || item.provider)}</td><td>${bal}</td><td>${note}</td></tr>`;
+  }).join("");
+
+  // Update configured status in pricing table
+  state.providerBalances.forEach(item => {
+    const el = document.getElementById("conf-" + item.provider);
+    if (el) {
+      const configured = item.account_balance && item.account_balance.source !== "not_configured";
+      el.innerHTML = `<span class="pricing-badge ${configured ? "pricing-yes" : "pricing-no"}">${configured ? "Yes" : "No"}</span>`;
+    }
+  });
+}
+
+function renderMessages(msgs, tbodyId, countStatId) {
+  const tbody = document.getElementById(tbodyId);
+  if (countStatId) document.getElementById(countStatId).textContent = msgs.length;
+  if (!msgs.length) { tbody.innerHTML = '<tr><td colspan="6" class="empty">None yet.</td></tr>'; return; }
+  tbody.innerHTML = msgs.map(m => `
+    <tr>
+      <td style="white-space:nowrap">${esc(fmt(m.created_at))}</td>
+      <td><span class="chip chip-blue">${esc(m.provider)}</span></td>
+      <td style="font-family:monospace">${esc(m.from_number)}</td>
+      <td style="font-family:monospace">${esc(m.to_number)}</td>
+      <td>${esc(m.body)}</td>
+      <td><span class="chip ${m.status === "failed" ? "chip-red" : "chip-green"}">${esc(m.status)}</span></td>
+    </tr>`).join("");
+}
+
+function renderCalls(calls, tbodyId, countStatId) {
+  const tbody = document.getElementById(tbodyId);
+  if (countStatId) document.getElementById(countStatId).textContent = calls.length;
+  if (!calls.length) { tbody.innerHTML = '<tr><td colspan="6" class="empty">None yet.</td></tr>'; return; }
+  tbody.innerHTML = calls.map(c => `
+    <tr>
+      <td style="white-space:nowrap">${esc(fmt(c.created_at))}</td>
+      <td><span class="chip chip-blue">${esc(c.provider)}</span></td>
+      <td style="font-family:monospace">${esc(c.from_number)}</td>
+      <td style="font-family:monospace">${esc(c.to_number)}</td>
+      <td><span class="chip ${c.status === "failed" ? "chip-red" : "chip-green"}">${esc(c.status)}</span></td>
+      <td style="font-size:11px;color:var(--muted)">${esc(c.provider_call_id || "—")}</td>
+    </tr>`).join("");
+}
+
+function renderSearchResults() {
+  const tbody = document.getElementById("search_results");
+  const wrap = document.getElementById("search_results_wrap");
+  if (!state.searchResults.length) {
+    tbody.innerHTML = '<tr><td colspan="6" class="empty">No results yet.</td></tr>';
+    wrap.style.display = "none"; return;
+  }
+  wrap.style.display = "";
+  tbody.innerHTML = state.searchResults.map(n => {
+    const caps = [n.capabilities?.sms && "SMS", n.capabilities?.voice && "Voice"].filter(Boolean).join(", ") || "—";
+    const region = [n.locality, n.region].filter(Boolean).join(", ") || "—";
+    return `<tr>
+      <td style="font-family:monospace">${esc(n.phone_number)}</td>
+      <td><span class="chip ${n.line_type === "voip" ? "chip-red" : "chip-green"}">${esc(n.line_type || "?")}</span></td>
+      <td>${esc(caps)}</td>
+      <td>${esc(region)}</td>
+      <td>${esc(n.monthly_cost_estimate != null ? `$${Number(n.monthly_cost_estimate).toFixed(2)}` : "—")}</td>
+      <td><button class="btn-release" style="color:var(--accent-hover);border-color:rgba(56,139,253,.3)" data-buy="${esc(n.phone_number)}">Order</button></td>
+    </tr>`;
+  }).join("");
+  tbody.querySelectorAll("[data-buy]").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      try {
+        const provider = document.getElementById("provider").value;
+        const nonVoipOnly = document.getElementById("non_voip_only").value === "true";
+        const data = await api("/api/numbers/order", { method: "POST", body: JSON.stringify({ provider, phone_number: btn.dataset.buy, non_voip_only: nonVoipOnly }) });
+        const warn = (data.warnings || []).join(" | ");
+        setStatus("search_status", `Ordered ${btn.dataset.buy}. Charged $${Number(data.charged_usd||0).toFixed(2)}.${warn ? " ⚠ " + warn : ""}`);
+        await loadWallet(); await loadNumbers();
+      } catch (e) { setStatus("search_status", e.message, true); }
+    });
+  });
+}
+
+function renderWebhooks() {
+  const base = window.location.origin;
+  const set = (id, url) => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = url;
+  };
+  set("twilio_msg_webhook", `${base}/webhooks/twilio/message`);
+  set("twilio_voice_webhook", `${base}/webhooks/twilio/voice`);
+  set("telnyx_events_webhook", `${base}/webhooks/telnyx/events`);
+}
+
+// ── Data loaders ──────────────────────────────────────────────────────────────
+
+async function loadProviders() {
+  const d = await api("/api/providers");
+  state.providers = d.providers || [];
+  refreshProviderSelects();
+}
+
+async function loadProviderBalances() {
+  const d = await api("/api/providers/balances");
+  state.providerBalances = d.balances || [];
+  renderProviderBalances();
+}
+
+async function loadWallet() {
+  const d = await api("/api/wallet");
+  state.wallet = d || { balance: 0, transactions: [] };
+  renderWallet();
+}
+
+async function loadNumbers() {
+  const d = await api("/api/numbers");
+  state.numbers = d.numbers || [];
+  renderNumbers();
+}
+
+async function loadInboundMessages() {
+  const d = await api("/api/messages?direction=inbound&limit=50");
+  state.inboundMessages = d.messages || [];
+  renderMessages(state.inboundMessages, "inbound_messages", "stat-msgs");
+}
+
+async function loadInboundCalls() {
+  const d = await api("/api/calls?direction=inbound&limit=50");
+  state.inboundCalls = d.calls || [];
+  renderCalls(state.inboundCalls, "inbound_calls", "stat-calls");
+}
+
+async function loadOutboundMessages() {
+  const d = await api("/api/messages?direction=outbound&limit=50");
+  renderMessages(d.messages || [], "outbound_messages", null);
+}
+
+async function loadOutboundCalls() {
+  const d = await api("/api/calls?direction=outbound&limit=50");
+  renderCalls(d.calls || [], "outbound_calls", null);
+}
+
+// ── Actions ───────────────────────────────────────────────────────────────────
+
+async function runSearch() {
+  const provider = document.getElementById("provider").value;
+  const body = {
+    provider,
+    country: document.getElementById("country").value || "US",
+    area_code: document.getElementById("area_code").value || "",
+    limit: Number(document.getElementById("limit").value || "10"),
+    non_voip_only: document.getElementById("non_voip_only").value === "true",
+    require_sms: document.getElementById("require_sms").value === "true",
+    require_voice: document.getElementById("require_voice").value === "true",
+  };
+  try {
+    setStatus("search_status", "Searching…");
+    const d = await api("/api/numbers/search", { method: "POST", body: JSON.stringify(body) });
+    state.searchResults = d.results || [];
+    renderSearchResults();
+    setStatus("search_status", `Found ${state.searchResults.length} number(s).`);
+  } catch (e) { setStatus("search_status", e.message, true); }
+}
+
+async function syncProviderNumbers() {
+  const provider = document.getElementById("provider").value;
+  try {
+    setStatus("numbers_status", "Syncing…");
+    const d = await api("/api/numbers/sync", { method: "POST", body: JSON.stringify({ provider }) });
+    setStatus("numbers_status", `Imported ${d.imported} numbers from ${provider}.`);
+    await loadNumbers();
+  } catch (e) { setStatus("numbers_status", e.message, true); }
+}
+
+async function topupWallet() {
+  const amount = Number(document.getElementById("topup_amount").value || "0");
+  const method = document.getElementById("topup_method").value || "manual";
+  try {
+    const d = await api("/api/wallet/topup", { method: "POST", body: JSON.stringify({ amount, method }) });
+    setStatus("wallet_status", `Top-up successful. New balance: $${Number(d.balance).toFixed(2)}`);
+    await loadWallet();
+  } catch (e) { setStatus("wallet_status", e.message, true); }
+}
+
+async function sendMessage() {
+  const body = {
+    provider: document.getElementById("msg_provider").value,
+    from_number: document.getElementById("msg_from").value,
+    to_number: document.getElementById("msg_to").value,
+    message: document.getElementById("msg_body").value,
+  };
+  try {
+    setStatus("msg_status", "Sending…");
+    const d = await api("/api/messages/send", { method: "POST", body: JSON.stringify(body) });
+    const warn = d.message?.auto_profile_sync?.warning ? ` ⚠ ${d.message.auto_profile_sync.warning}` : "";
+    setStatus("msg_status", `Queued: ${d.message.id || "ok"} | Charged $${Number(d.charged_usd||0).toFixed(4)}${warn}`);
+    await loadWallet();
+    await loadOutboundMessages();
+  } catch (e) { setStatus("msg_status", e.message, true); }
+}
+
+async function startCall() {
+  const body = {
+    provider: document.getElementById("call_provider").value,
+    from_number: document.getElementById("call_from").value,
+    to_number: document.getElementById("call_to").value,
+    say_text: document.getElementById("call_text").value,
+    estimated_minutes: Number(document.getElementById("call_minutes").value || "1"),
+  };
+  try {
+    setStatus("call_status", "Initiating call…");
+    const d = await api("/api/calls/start", { method: "POST", body: JSON.stringify(body) });
+    const warn = d.call?.auto_profile_sync?.warning ? ` ⚠ ${d.call.auto_profile_sync.warning}` : "";
+    setStatus("call_status", `Initiated: ${d.call.id || "ok"} | Charged $${Number(d.charged_usd||0).toFixed(4)}${warn}`);
+    await loadWallet();
+    await loadOutboundCalls();
+  } catch (e) { setStatus("call_status", e.message, true); }
+}
+
+// ── Copy buttons ──────────────────────────────────────────────────────────────
+
+document.querySelectorAll(".btn-copy").forEach(btn => {
+  btn.addEventListener("click", () => {
+    const el = document.getElementById(btn.dataset.copy);
+    if (el) {
+      navigator.clipboard.writeText(el.textContent || "").then(() => {
+        const orig = btn.textContent;
+        btn.textContent = "Copied!";
+        setTimeout(() => btn.textContent = orig, 1500);
+      });
+    }
+  });
+});
+
+// ── Event bindings ────────────────────────────────────────────────────────────
+
+function bindEvents() {
+  document.getElementById("search_btn").addEventListener("click", runSearch);
+  document.getElementById("refresh_numbers_btn").addEventListener("click", loadNumbers);
+  document.getElementById("sync_provider_btn").addEventListener("click", syncProviderNumbers);
+  document.getElementById("send_msg_btn").addEventListener("click", sendMessage);
+  document.getElementById("start_call_btn").addEventListener("click", startCall);
+  document.getElementById("topup_btn").addEventListener("click", topupWallet);
+  document.getElementById("refresh_provider_balances_btn").addEventListener("click", loadProviderBalances);
+  document.getElementById("refresh_inbound_messages_btn").addEventListener("click", loadInboundMessages);
+  document.getElementById("refresh_inbound_calls_btn").addEventListener("click", loadInboundCalls);
+  document.getElementById("refresh_outbound_msgs_btn").addEventListener("click", loadOutboundMessages);
+  document.getElementById("refresh_outbound_calls_btn").addEventListener("click", loadOutboundCalls);
+  document.getElementById("msg_provider").addEventListener("change", syncFromNumbers);
+  document.getElementById("call_provider").addEventListener("change", syncFromNumbers);
+}
+
+// ── Auto-poll (inbox refresh every 15s) ──────────────────────────────────────
+
+let _pollTimer = null;
+function startPolling() {
+  if (_pollTimer) return;
+  _pollTimer = setInterval(async () => {
+    await Promise.all([loadInboundMessages(), loadInboundCalls()]).catch(() => {});
+  }, 15000);
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+
+async function init() {
+  try {
+    await Promise.all([loadProviders(), loadWallet(), loadNumbers()]);
+    await Promise.all([loadInboundMessages(), loadInboundCalls(), loadOutboundMessages(), loadOutboundCalls()]);
+    await loadProviderBalances();
+    bindEvents();
+    renderWebhooks();
+    startPolling();
+  } catch (e) {
+    setStatus("search_status", "Init error: " + e.message, true);
+  }
+}
+
+// ── Bootstrap ─────────────────────────────────────────────────────────────────
+checkAuth();
+</script>
 </body>
 </html>
-

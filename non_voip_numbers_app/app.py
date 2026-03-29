@@ -1,8 +1,9 @@
+import functools
 import os
 from pathlib import Path
 from typing import Any
 
-from flask import Flask, Response, jsonify, render_template, request
+from flask import Flask, Response, jsonify, render_template, request, session
 
 from .providers import ProviderError, build_providers
 from .storage import Storage
@@ -31,10 +32,41 @@ def load_local_env() -> None:
 def create_app() -> Flask:
     load_local_env()
     app = Flask(__name__)
-    app.config["JSON_SORT_KEYS"] = False
+    app.json.sort_keys = False
+    app.secret_key = os.environ.get("SECRET_KEY", os.urandom(32).hex())
 
     storage = Storage()
     providers = build_providers()
+
+    # ── Auth helpers ─────────────────────────────────────────────────────────
+
+    _admin_token = os.environ.get("ADMIN_TOKEN", "").strip()
+
+    def _token_ok(token: str) -> bool:
+        """Return True if token matches the configured ADMIN_TOKEN (constant-time compare)."""
+        if not _admin_token:
+            return True  # no token set → open (dev/local mode only)
+        import hmac
+        return hmac.compare_digest(_admin_token, token)
+
+    def _auth_ok() -> bool:
+        """Check API key header/param OR session login."""
+        if session.get("authed"):
+            return True
+        token = (
+            request.headers.get("X-Admin-Token")
+            or request.args.get("token")
+            or ""
+        )
+        return _token_ok(token)
+
+    def require_auth(fn):
+        @functools.wraps(fn)
+        def wrapper(*args, **kwargs):
+            if not _auth_ok():
+                return jsonify({"error": "Unauthorized. Provide a valid X-Admin-Token header."}), 401
+            return fn(*args, **kwargs)
+        return wrapper
 
     provider_pricing = {
         "telnyx": {
@@ -115,6 +147,49 @@ def create_app() -> Flask:
                 return item.get("provider_number_id")
         return None
 
+    # ── Error handlers ───────────────────────────────────────────────────────
+
+    @app.errorhandler(404)
+    def not_found(e):
+        if request.path.startswith("/api/") or request.path.startswith("/webhooks/"):
+            return jsonify({"error": "Endpoint not found."}), 404
+        return render_template("index.html", providers=providers,
+                               pricing_rows=sorted(provider_pricing.values(), key=lambda x: x["rank"])), 404
+
+    @app.errorhandler(405)
+    def method_not_allowed(e):
+        return jsonify({"error": "Method not allowed."}), 405
+
+    @app.errorhandler(500)
+    def internal_error(e):
+        return jsonify({"error": "Internal server error.", "detail": str(e)}), 500
+
+    # ── Auth routes ──────────────────────────────────────────────────────────
+
+    @app.post("/api/auth/login")
+    def api_login():
+        body = payload()
+        token = str(body.get("token", "")).strip()
+        if not _token_ok(token):
+            return jsonify({"error": "Invalid admin token."}), 401
+        session["authed"] = True
+        return jsonify({"ok": True})
+
+    @app.post("/api/auth/logout")
+    def api_logout():
+        session.clear()
+        return jsonify({"ok": True})
+
+    @app.get("/api/auth/status")
+    def api_auth_status():
+        token_configured = bool(_admin_token)
+        return jsonify({
+            "authed": _auth_ok(),
+            "token_required": token_configured,
+        })
+
+    # ── Main routes ──────────────────────────────────────────────────────────
+
     @app.get("/")
     def home():
         pricing_rows = sorted(provider_pricing.values(), key=lambda item: item["rank"])
@@ -129,6 +204,7 @@ def create_app() -> Flask:
         return jsonify({"ok": True})
 
     @app.get("/api/providers")
+    @require_auth
     def list_providers():
         live = []
         for provider in providers.values():
@@ -140,6 +216,7 @@ def create_app() -> Flask:
         return jsonify({"providers": live})
 
     @app.get("/api/providers/balances")
+    @require_auth
     def provider_balances():
         balances: list[dict[str, Any]] = []
         for provider in providers.values():
@@ -147,7 +224,7 @@ def create_app() -> Flask:
                 continue
             try:
                 details = provider.account_balance()
-            except Exception as exc:  # pragma: no cover - external APIs
+            except Exception as exc:
                 details = {"balance": None, "currency": "USD", "error": str(exc)}
             balances.append(
                 {
@@ -159,6 +236,7 @@ def create_app() -> Flask:
         return jsonify({"balances": balances})
 
     @app.get("/api/wallet")
+    @require_auth
     def wallet_summary():
         limit = parse_int(request.args.get("limit"), 100, 1, 500)
         return jsonify(
@@ -169,6 +247,7 @@ def create_app() -> Flask:
         )
 
     @app.post("/api/wallet/topup")
+    @require_auth
     def wallet_topup():
         body = payload()
         amount = parse_float(body.get("amount"), 0.0)
@@ -180,10 +259,12 @@ def create_app() -> Flask:
             return jsonify({"error": str(exc)}), 400
 
     @app.get("/api/numbers")
+    @require_auth
     def list_numbers():
         return jsonify({"numbers": storage.list_numbers()})
 
     @app.post("/api/numbers/search")
+    @require_auth
     def search_numbers():
         body = payload()
         provider_id = body.get("provider", "mock")
@@ -202,6 +283,7 @@ def create_app() -> Flask:
             return jsonify({"error": str(exc)}), 400
 
     @app.post("/api/numbers/purchase")
+    @require_auth
     def purchase_number():
         body = payload()
         provider_id = str(body.get("provider", "mock")).lower()
@@ -245,11 +327,12 @@ def create_app() -> Flask:
             return jsonify({"error": str(exc)}), 400
 
     @app.post("/api/numbers/order")
+    @require_auth
     def order_number():
-        # Alias for purchase to make "ordering numbers" explicit in API.
         return purchase_number()
 
     @app.post("/api/numbers/<int:number_id>/release")
+    @require_auth
     def release_number(number_id: int):
         number = storage.get_number(number_id)
         if not number:
@@ -267,6 +350,7 @@ def create_app() -> Flask:
             return jsonify({"error": str(exc)}), 400
 
     @app.post("/api/numbers/sync")
+    @require_auth
     def sync_owned_numbers():
         body = payload()
         provider_id = body.get("provider", "mock")
@@ -291,12 +375,14 @@ def create_app() -> Flask:
             return jsonify({"error": str(exc)}), 400
 
     @app.get("/api/messages")
+    @require_auth
     def list_messages():
         direction = request.args.get("direction")
         limit = parse_int(request.args.get("limit"), 100, 1, 500)
         return jsonify({"messages": storage.list_message_logs(limit=limit, direction=direction)})
 
     @app.post("/api/messages/send")
+    @require_auth
     def send_message():
         body = payload()
         provider_id = str(body.get("provider", "mock")).lower()
@@ -344,12 +430,14 @@ def create_app() -> Flask:
             return jsonify({"error": str(exc)}), 400
 
     @app.get("/api/calls")
+    @require_auth
     def list_calls():
         direction = request.args.get("direction")
         limit = parse_int(request.args.get("limit"), 100, 1, 500)
         return jsonify({"calls": storage.list_call_logs(limit=limit, direction=direction)})
 
     @app.post("/api/calls/start")
+    @require_auth
     def start_call():
         body = payload()
         provider_id = str(body.get("provider", "mock")).lower()
@@ -440,7 +528,7 @@ def create_app() -> Flask:
         )
         say_text = os.environ.get(
             "TWILIO_INBOUND_SAY_TEXT",
-            "Thanks for calling. Your call was received by the 2ndCall app.",
+            "Thanks for calling. Your call was received by 2ndCall.",
         )
         twiml = f"<Response><Say>{say_text}</Say></Response>"
         return Response(twiml, mimetype="text/xml")
@@ -489,6 +577,7 @@ def create_app() -> Flask:
         return jsonify({"received": True})
 
     @app.get("/api/export")
+    @require_auth
     def export_data():
         return jsonify(
             {
@@ -511,4 +600,3 @@ if __name__ == "__main__":
     port = int(os.environ.get("PORT", os.environ.get("NUMBER_APP_PORT", "5050")))
     debug = parse_bool(os.environ.get("NUMBER_APP_DEBUG"), False)
     app.run(host=host, port=port, debug=debug)
-
