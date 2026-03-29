@@ -304,7 +304,15 @@ def create_app() -> Flask:
 
     @app.get("/health")
     def health():
-        return jsonify({"ok": True})
+        import os as _os
+        db_path = storage.db_path
+        on_volume = db_path.startswith("/data")
+        return jsonify({
+            "ok": True,
+            "db_path": db_path,
+            "persistent": on_volume,
+            "storage_warning": None if on_volume else "No persistent volume — data lost on redeploy",
+        })
 
     @app.get("/api/providers")
     @require_auth

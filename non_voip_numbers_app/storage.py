@@ -10,16 +10,23 @@ from typing import Any
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 def _resolve_db_path() -> str:
-    """Resolve SQLite DB path — prefer a Railway-style persistent volume mount at /data,
-    then fall back to the NUMBER_APP_DB_PATH env var, then the app directory."""
+    """Resolve SQLite DB path.
+    Priority: NUMBER_APP_DB_PATH env var → /data (Railway persistent volume) → app directory.
+    /data is created by Railway when a volume is mounted at that path, ensuring data
+    survives redeployments, restarts, and scaling events."""
     explicit = os.environ.get("NUMBER_APP_DB_PATH", "").strip()
     if explicit:
         os.makedirs(os.path.dirname(os.path.abspath(explicit)), exist_ok=True)
         return explicit
-    # Railway persistent volume is typically mounted at /data
+    # Railway persistent volume is mounted at /data — always prefer it when present.
     if os.path.isdir("/data"):
-        return "/data/non_voip_numbers.db"
-    return os.path.join(BASE_DIR, "non_voip_numbers.db")
+        path = "/data/non_voip_numbers.db"
+        print(f"[storage] Using persistent volume: {path}", flush=True)
+        return path
+    # Local / non-Railway fallback
+    path = os.path.join(BASE_DIR, "non_voip_numbers.db")
+    print(f"[storage] Warning: no persistent volume found. DB stored at {path} — data will be lost on redeploy!", flush=True)
+    return path
 
 DEFAULT_DB_PATH = _resolve_db_path()
 
@@ -128,11 +135,14 @@ class Storage:
                 )
                 """
             )
-            # Lightweight migrations
+            # Lightweight migrations — safe to run on every startup, ignored if column exists
             self._ensure_column(conn, "message_logs", "direction", "TEXT NOT NULL DEFAULT 'outbound'")
             self._ensure_column(conn, "message_logs", "event_type", "TEXT DEFAULT ''")
             self._ensure_column(conn, "call_logs", "direction", "TEXT NOT NULL DEFAULT 'outbound'")
             self._ensure_column(conn, "call_logs", "event_type", "TEXT DEFAULT ''")
+            # Users table migrations (for DBs created before the users feature)
+            self._ensure_column(conn, "users", "avatar_color", "TEXT DEFAULT '#1f6feb'")
+            self._ensure_column(conn, "users", "last_seen", "TEXT")
 
     def _ensure_column(
         self,
