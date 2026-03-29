@@ -615,8 +615,6 @@ class TelnyxProvider(BaseProvider):
 
 def build_providers() -> dict[str, BaseProvider]:
     providers: dict[str, BaseProvider] = {
-        "mock": MockProvider(),
-        "twilio": TwilioProvider(),
         "telnyx": TelnyxProvider(),
     }
     return providers

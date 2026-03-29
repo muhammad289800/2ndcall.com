@@ -73,21 +73,7 @@ def create_app() -> Flask:
             "rank": 1,
             "label": "Telnyx",
             "estimated_local_number_monthly_usd": "from $1.00",
-            "notes": "Strong low-cost API option for SMS/voice workloads.",
-            "integrated_in_app": True,
-        },
-        "plivo": {
-            "rank": 2,
-            "label": "Plivo",
-            "estimated_local_number_monthly_usd": "from $0.50",
-            "notes": "Very low number rental cost; not wired in this build yet.",
-            "integrated_in_app": False,
-        },
-        "twilio": {
-            "rank": 3,
-            "label": "Twilio",
-            "estimated_local_number_monthly_usd": "about $1.15",
-            "notes": "Broad ecosystem and reliability, usually higher unit cost.",
+            "notes": "Low-cost API for SMS and voice. Set TELNYX_API_KEY to activate.",
             "integrated_in_app": True,
         },
     }
@@ -114,8 +100,8 @@ def create_app() -> Flask:
         provider = providers.get(provider_id.lower())
         if not provider:
             raise ValueError(f"Unsupported provider '{provider_id}'.")
-        if not provider.is_configured() and provider.provider_id != "mock":
-            raise ValueError(f"Provider '{provider_id}' is not configured.")
+        if not provider.is_configured():
+            raise ValueError(f"Provider '{provider_id}' is not configured. Set TELNYX_API_KEY.")
         return provider
 
     def ensure_wallet_can_cover(amount: float) -> None:
@@ -220,7 +206,7 @@ def create_app() -> Flask:
     def provider_balances():
         balances: list[dict[str, Any]] = []
         for provider in providers.values():
-            if provider.provider_id != "mock" and not provider.is_configured():
+            if not provider.is_configured():
                 continue
             try:
                 details = provider.account_balance()
