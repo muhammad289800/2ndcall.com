@@ -309,6 +309,10 @@ def create_app() -> Flask:
             pricing_rows=pricing_rows,
         )
 
+    @app.get("/sw.js")
+    def service_worker():
+        return app.send_static_file("sw.js"), 200, {"Content-Type": "application/javascript", "Service-Worker-Allowed": "/"}
+
     @app.get("/health")
     def health():
         import os as _os
