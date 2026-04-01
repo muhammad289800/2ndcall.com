@@ -378,7 +378,11 @@ def create_app() -> Flask:
         amount = parse_float(body.get("amount"), 0.0)
         method = str(body.get("method", "manual")).strip() or "manual"
         target_user_id_raw = body.get("user_id")
-        target_uid: int | None = int(target_user_id_raw) if target_user_id_raw else None
+        if target_user_id_raw:
+            target_uid: int | None = int(target_user_id_raw)
+        else:
+            current_user = _get_session_user()
+            target_uid = current_user["id"] if current_user else None
         try:
             result = storage.top_up_wallet(amount, method=method, user_id=target_uid)
             return jsonify(result)

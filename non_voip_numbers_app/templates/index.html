@@ -890,20 +890,6 @@
           <div class="settings-section-title">Webhook URLs</div>
           <div class="settings-row">
             <div>
-              <div class="settings-row-label">Twilio SMS</div>
-              <div class="wh-url" id="wh-twilio-msg">—</div>
-            </div>
-            <button class="copy-btn" data-copy="wh-twilio-msg">Copy</button>
-          </div>
-          <div class="settings-row">
-            <div>
-              <div class="settings-row-label">Twilio Voice</div>
-              <div class="wh-url" id="wh-twilio-voice">—</div>
-            </div>
-            <button class="copy-btn" data-copy="wh-twilio-voice">Copy</button>
-          </div>
-          <div class="settings-row">
-            <div>
               <div class="settings-row-label">Telnyx Events</div>
               <div class="wh-url" id="wh-telnyx">—</div>
             </div>
@@ -2121,8 +2107,6 @@ async function pollOrder(orderId, amount) {
 // ════════════════════════════════════════════
 async function loadSettings() {
   const base = window.location.origin;
-  document.getElementById("wh-twilio-msg").textContent = `${base}/webhooks/twilio/message`;
-  document.getElementById("wh-twilio-voice").textContent = `${base}/webhooks/twilio/voice`;
   document.getElementById("wh-telnyx").textContent = `${base}/webhooks/telnyx/events`;
   renderProviderStatus();
 }
@@ -2167,7 +2151,7 @@ document.getElementById("settings-logout-btn").addEventListener("click", async (
 // ════════════════════════════════════════════
 //  PROFILE
 // ════════════════════════════════════════════
-function fmtDate(iso) {
+function fmtDateShort(iso) {
   if (!iso) return "—";
   const d = new Date(iso);
   return d.toLocaleDateString("en-US", { year:"numeric", month:"short", day:"numeric" });
@@ -2201,7 +2185,7 @@ async function loadProfile() {
     document.getElementById("profile-role-chip").className = "chip chip-blue";
     document.getElementById("profile-since-chip").textContent = "";
     document.getElementById("profile-stat-numbers").textContent = S.numbers?.length || 0;
-    document.getElementById("profile-stat-msgs").textContent = (S.conversations||[]).reduce((a,c)=>a+(c.count||0),0);
+    document.getElementById("profile-stat-msgs").textContent = (S.conversations||[]).reduce((a,c)=>a+(c.message_count||0),0);
     document.getElementById("profile-stat-calls").textContent = S.calls?.length || 0;
     document.getElementById("profile-last-seen").textContent = "Active";
     document.getElementById("profile-name-input").value = "";
@@ -2228,9 +2212,9 @@ async function loadProfile() {
   const roleChip = document.getElementById("profile-role-chip");
   roleChip.textContent = u.role === "admin" ? "Admin" : "Member";
   roleChip.className = "chip " + (u.role === "admin" ? "chip-blue" : "chip-green");
-  document.getElementById("profile-since-chip").textContent = "Joined " + fmtDate(u.created_at);
+  document.getElementById("profile-since-chip").textContent = "Joined " + fmtDateShort(u.created_at);
   document.getElementById("profile-stat-numbers").textContent = S.numbers?.length || 0;
-  document.getElementById("profile-stat-msgs").textContent = (S.conversations||[]).reduce((a,c)=>a+(c.count||0),0);
+  document.getElementById("profile-stat-msgs").textContent = (S.conversations||[]).reduce((a,c)=>a+(c.message_count||0),0);
   document.getElementById("profile-stat-calls").textContent = S.calls?.length || 0;
   document.getElementById("profile-last-seen").textContent = fmtDateTime(u.last_seen || u.last_login);
   document.getElementById("profile-name-input").value = u.name || "";
@@ -2258,7 +2242,7 @@ async function loadAdminUsers() {
         </div>
         <div style="text-align:right;flex-shrink:0;">
           <div class="chip ${u.role==='admin'?'chip-blue':'chip-green'}" style="margin-bottom:4px;">${u.role}</div>
-          <div style="font-size:11px;color:var(--muted);">${fmtDate(u.created_at)}</div>
+          <div style="font-size:11px;color:var(--muted);">${fmtDateShort(u.created_at)}</div>
         </div>
       </div>`;
     }).join("") || `<div style="padding:18px;color:var(--muted);text-align:center;font-size:13px;">No users yet.</div>`;
@@ -2409,8 +2393,6 @@ async function initApp() {
   buildDialpad();
   // Render webhook URLs immediately
   const base = window.location.origin;
-  document.getElementById("wh-twilio-msg").textContent = `${base}/webhooks/twilio/message`;
-  document.getElementById("wh-twilio-voice").textContent = `${base}/webhooks/twilio/voice`;
   document.getElementById("wh-telnyx").textContent = `${base}/webhooks/telnyx/events`;
 
   // Update sidebar user display
