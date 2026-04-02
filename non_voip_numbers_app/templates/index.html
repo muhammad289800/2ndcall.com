@@ -2426,7 +2426,7 @@ function renderProviderStatus() {
     </div>`).join("");
 }
 
-// WebRTC setup button
+// WebRTC setup
 document.getElementById("setup-webrtc-btn").addEventListener("click", async () => {
   const btn = document.getElementById("setup-webrtc-btn");
   const statusEl = document.getElementById("webrtc-status-text");
@@ -2438,14 +2438,23 @@ document.getElementById("setup-webrtc-btn").addEventListener("click", async () =
       `<span style="color:var(--muted);font-size:11px;">Save as TELNYX_CREDENTIAL_ID on Railway for persistence across redeploys.</span>`;
     btn.textContent = "Configured";
     toast("WebRTC calling enabled!");
-    // Re-init WebRTC
     initWebRTC().catch(() => {});
   } catch(e) {
+    // If connection error, try to show available connections
     statusEl.style.color = "var(--red)"; statusEl.textContent = e.message;
     btn.textContent = "Setup WebRTC"; btn.disabled = false;
+    try {
+      const c = await api("/api/webrtc/connections");
+      if (c.connections && c.connections.length) {
+        statusEl.innerHTML += `<br><span style="color:var(--yellow);font-size:11px;">Available connections:</span>`;
+        c.connections.forEach(conn => {
+          statusEl.innerHTML += `<br><code style="font-size:11px;background:var(--surface2);padding:2px 6px;border-radius:4px;">${esc(conn.id)}</code> — ${esc(conn.name)} (${esc(conn.type)})`;
+        });
+        statusEl.innerHTML += `<br><span style="color:var(--muted);font-size:11px;">Set the correct ID as TELNYX_CONNECTION_ID on Railway and retry.</span>`;
+      }
+    } catch {}
   }
 });
-// Check WebRTC status on settings load
 async function checkWebRTCStatus() {
   try {
     const d = await api("/api/webrtc/status");
@@ -2454,15 +2463,10 @@ async function checkWebRTCStatus() {
     if (d.configured) {
       statusEl.style.color = "var(--green)";
       statusEl.textContent = "WebRTC calling is active.";
-      btn.textContent = "Configured";
-      btn.disabled = true;
+      btn.textContent = "Configured"; btn.disabled = true;
     } else if (!d.telnyx_configured) {
       statusEl.style.color = "var(--muted)";
       statusEl.textContent = "Telnyx API key not set.";
-      btn.disabled = true;
-    } else if (!d.connection_id) {
-      statusEl.style.color = "var(--yellow)";
-      statusEl.textContent = "Set TELNYX_CONNECTION_ID first.";
       btn.disabled = true;
     } else {
       statusEl.style.color = "var(--muted)";

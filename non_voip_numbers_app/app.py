@@ -335,15 +335,28 @@ def create_app() -> Flask:
         tp = providers.get("telnyx")
         if not tp or not tp.is_configured():
             return jsonify({"error": "Telnyx not configured. Set TELNYX_API_KEY."}), 503
-        if not tp.connection_id:
-            return jsonify({"error": "TELNYX_CONNECTION_ID not set. Required for WebRTC."}), 503
         if _webrtc_credential["id"]:
             return jsonify({"ok": True, "credential_id": _webrtc_credential["id"], "message": "Already configured."})
+
+        # Find a valid connection_id — try configured one first, then auto-discover
+        conn_id = tp.connection_id
+        if not conn_id:
+            # Try to find a credential_connection automatically
+            try:
+                r = http_requests.get("https://api.telnyx.com/v2/credential_connections", headers=_get_telnyx_headers(), timeout=15)
+                conns = r.json().get("data", []) if r.status_code < 400 else []
+                if conns:
+                    conn_id = conns[0].get("id", "")
+            except Exception:
+                pass
+        if not conn_id:
+            return jsonify({"error": "No Telnyx connection found. Set TELNYX_CONNECTION_ID or create a Credential Connection in Telnyx."}), 503
+
         try:
             resp = http_requests.post(
                 "https://api.telnyx.com/v2/telephony_credentials",
                 headers=_get_telnyx_headers(),
-                json={"connection_id": tp.connection_id, "name": "2ndCall-WebRTC"},
+                json={"connection_id": conn_id, "name": "2ndCall-WebRTC"},
                 timeout=15,
             )
             if resp.status_code >= 400:
@@ -358,6 +371,38 @@ def create_app() -> Flask:
                 "credential_id": cred_id,
                 "message": "WebRTC credential created! Save this as TELNYX_CREDENTIAL_ID env var for persistence.",
             })
+        except Exception as exc:
+            return jsonify({"error": str(exc)}), 500
+
+    @app.get("/api/webrtc/connections")
+    @require_admin
+    def webrtc_connections():
+        """List all Telnyx connections to find the correct connection_id."""
+        tp = providers.get("telnyx")
+        if not tp or not tp.is_configured():
+            return jsonify({"error": "Telnyx not configured."}), 503
+        try:
+            resp = http_requests.get(
+                "https://api.telnyx.com/v2/credential_connections",
+                headers=_get_telnyx_headers(),
+                timeout=15,
+            )
+            cred_conns = resp.json().get("data", []) if resp.status_code < 400 else []
+            resp2 = http_requests.get(
+                "https://api.telnyx.com/v2/fqdn_connections",
+                headers=_get_telnyx_headers(),
+                timeout=15,
+            )
+            fqdn_conns = resp2.json().get("data", []) if resp2.status_code < 400 else []
+            all_conns = []
+            for c in cred_conns + fqdn_conns:
+                all_conns.append({
+                    "id": c.get("id"),
+                    "name": c.get("connection_name") or c.get("user_name") or c.get("id"),
+                    "type": c.get("record_type", "unknown"),
+                    "active": c.get("active", True),
+                })
+            return jsonify({"connections": all_conns, "current_connection_id": tp.connection_id})
         except Exception as exc:
             return jsonify({"error": str(exc)}), 500
 
