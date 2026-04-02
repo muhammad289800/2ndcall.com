@@ -343,31 +343,42 @@ def create_app() -> Flask:
         if _webrtc_cred["sip_username"] and _webrtc_cred["sip_password"]:
             return jsonify({"ok": True, "message": "Already configured.", "sip_username": _webrtc_cred["sip_username"]})
 
-        # Find or create a credential_connection
-        conn_id = None
+        # Get outbound voice profile ID (needed for making calls)
+        ovp_id = None
         try:
-            r = http_requests.get("https://api.telnyx.com/v2/credential_connections", headers=_get_telnyx_headers(), timeout=15)
-            conns = r.json().get("data", []) if r.status_code < 400 else []
-            for c in conns:
-                if c.get("active", True):
-                    conn_id = c.get("id", "")
+            r = http_requests.get("https://api.telnyx.com/v2/outbound_voice_profiles", headers=_get_telnyx_headers(), timeout=15)
+            profiles = r.json().get("data", []) if r.status_code < 400 else []
+            for p in profiles:
+                if p.get("enabled", True):
+                    ovp_id = p.get("id", "")
                     break
         except Exception:
             pass
+
+        # Create a NEW credential_connection with WebRTC support
+        conn_id = None
+        try:
+            conn_payload = {
+                "connection_name": "2ndCall-WebRTC-Live",
+                "active": True,
+                "webrtc_enabled": True,
+                "transport_protocol": "UDP",
+            }
+            if ovp_id:
+                conn_payload["outbound_voice_profile_id"] = ovp_id
+            r = http_requests.post(
+                "https://api.telnyx.com/v2/credential_connections",
+                headers=_get_telnyx_headers(),
+                json=conn_payload,
+                timeout=15,
+            )
+            if r.status_code < 400:
+                conn_id = r.json().get("data", r.json()).get("id", "")
+        except Exception:
+            pass
+
         if not conn_id:
-            try:
-                r = http_requests.post(
-                    "https://api.telnyx.com/v2/credential_connections",
-                    headers=_get_telnyx_headers(),
-                    json={"connection_name": "2ndCall-WebRTC", "active": True},
-                    timeout=15,
-                )
-                if r.status_code < 400:
-                    conn_id = r.json().get("data", r.json()).get("id", "")
-            except Exception:
-                pass
-        if not conn_id:
-            return jsonify({"error": "Could not find or create a Credential Connection."}), 503
+            return jsonify({"error": "Could not create a WebRTC Credential Connection."}), 503
 
         # Create credential with SIP username/password
         import secrets as _secrets

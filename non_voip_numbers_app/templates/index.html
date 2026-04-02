@@ -2818,7 +2818,12 @@ async function initWebRTC() {
   try {
     const d = await api("/api/webrtc/token");
     if (!d.sip_username) { toast("WebRTC: Not configured", "error"); return; }
-    _rtcClient = new RTC({ login: d.sip_username, password: d.sip_password });
+    _rtcClient = new RTC({
+      login: d.sip_username,
+      password: d.sip_password,
+      ringtoneFile: "",
+      ringbackFile: "",
+    });
     _rtcClient.on("telnyx.ready", () => {
       console.log("[WebRTC] Ready");
       toast("Live calling ready", "success");
