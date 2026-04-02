@@ -515,8 +515,11 @@
       background: var(--surface2); border: 1px solid var(--border); border-radius: 14px;
       padding: 18px 20px; font-size: 28px; font-weight: 800; font-family: "SF Mono", SFMono-Regular, Consolas, monospace;
       text-align: center; min-height: 64px; margin-bottom: 18px; letter-spacing: 3px;
-      color: var(--text); word-break: break-all;
+      color: var(--text); word-break: break-all; width: 100%; outline: none;
+      -webkit-appearance: none; appearance: none; cursor: text;
     }
+    .dialpad-display:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-bg); }
+    .dialpad-display::placeholder { font-size: 16px; font-weight: 400; letter-spacing: 0; color: var(--muted2); }
     .dialpad-grid {
       display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 18px;
     }
@@ -1065,7 +1068,7 @@
       <label class="form-label">From (your number)</label>
       <select class="form-input" id="dp-from"></select>
       <div style="height:12px;"></div>
-      <input type="tel" class="dialpad-display" id="dp-display" placeholder="Enter number" value="" autocomplete="off" />
+      <input type="tel" inputmode="tel" class="dialpad-display" id="dp-display" placeholder="Enter number" value="" autocomplete="off" />
       <div class="dialpad-grid" id="dialpad-grid"></div>
       <div class="dial-actions">
         <button class="dial-clear" id="dp-clear" title="Delete">⌫</button>
@@ -1820,9 +1823,13 @@ function buildDialpad() {
   ).join("");
   grid.querySelectorAll(".dial-key").forEach(el => {
     let holdTimer = null;
+    // Prevent buttons from stealing focus from the input
+    el.addEventListener("mousedown", (e) => e.preventDefault());
+    el.addEventListener("touchstart", (e) => e.preventDefault(), {passive: false});
     el.addEventListener("click", () => {
       if (holdTimer === null) { dialpadNum += el.dataset.key; updateDialDisplay(); }
       holdTimer = null;
+      document.getElementById("dp-display").focus();
     });
     // Long-press "0" to type "+"
     if (el.dataset.key === "0") {
