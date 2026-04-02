@@ -657,6 +657,7 @@ def create_app() -> Flask:
             uid = current_user["id"] if current_user else None
             ensure_wallet_can_cover(estimated_cost, provider_id, user_id=uid)
             result = provider.send_message(from_number, to_number, message)
+            safe_result = {"id": result.get("id"), "status": result.get("status")}
             storage.log_message(
                 provider=provider_id,
                 direction="outbound",
@@ -666,7 +667,7 @@ def create_app() -> Flask:
                 status=result.get("status", "queued"),
                 provider_message_id=result.get("id"),
                 event_type="outbound_message",
-                response=result.get("raw"),
+                response=result.get("raw") if isinstance(result.get("raw"), dict) else {},
             )
             if uid is not None and estimated_cost > 0:
                 try:
@@ -678,10 +679,10 @@ def create_app() -> Flask:
                         reference_id=str(result.get("id") or ""),
                         user_id=uid,
                     )
-                    return jsonify({"message": result, "wallet": charged, "charged_usd": estimated_cost})
+                    return jsonify({"message": safe_result, "wallet": charged, "charged_usd": estimated_cost})
                 except ValueError:
                     pass
-            return jsonify({"message": result, "charged_usd": 0})
+            return jsonify({"message": safe_result, "charged_usd": 0})
         except (ProviderError, ValueError) as exc:
             storage.log_message(
                 provider=provider_id,
@@ -721,6 +722,7 @@ def create_app() -> Flask:
             uid = current_user["id"] if current_user else None
             ensure_wallet_can_cover(estimated_cost, provider_id, user_id=uid)
             result = provider.start_call(from_number, to_number, say_text)
+            safe_result = {"id": result.get("id"), "status": result.get("status")}
             storage.log_call(
                 provider=provider_id,
                 direction="outbound",
@@ -730,7 +732,7 @@ def create_app() -> Flask:
                 status=result.get("status", "queued"),
                 provider_call_id=result.get("id"),
                 event_type="outbound_call",
-                response=result.get("raw"),
+                response=result.get("raw") if isinstance(result.get("raw"), dict) else {},
             )
             if uid is not None and estimated_cost > 0:
                 try:
@@ -742,10 +744,10 @@ def create_app() -> Flask:
                         reference_id=str(result.get("id") or ""),
                         user_id=uid,
                     )
-                    return jsonify({"call": result, "wallet": charged, "charged_usd": estimated_cost})
+                    return jsonify({"call": safe_result, "wallet": charged, "charged_usd": estimated_cost})
                 except ValueError:
                     pass
-            return jsonify({"call": result, "charged_usd": 0})
+            return jsonify({"call": safe_result, "charged_usd": 0})
         except (ProviderError, ValueError) as exc:
             storage.log_call(
                 provider=provider_id,
