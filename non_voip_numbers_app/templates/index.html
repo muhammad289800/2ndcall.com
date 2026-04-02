@@ -2448,8 +2448,7 @@ document.getElementById("setup-webrtc-btn").addEventListener("click", async () =
   try {
     const d = await api("/api/webrtc/setup", { method: "POST" });
     statusEl.style.color = "var(--green)";
-    statusEl.innerHTML = `Credential ID: <code style="font-size:11px;background:var(--surface2);padding:2px 6px;border-radius:4px;">${esc(d.credential_id)}</code><br>` +
-      `<span style="color:var(--muted);font-size:11px;">Save as TELNYX_CREDENTIAL_ID on Railway for persistence across redeploys.</span>`;
+    statusEl.innerHTML = esc(d.message || "WebRTC configured!");
     btn.textContent = "Configured";
     toast("WebRTC calling enabled!");
     initWebRTC().catch(() => {});
@@ -2818,8 +2817,8 @@ async function initWebRTC() {
 
   try {
     const d = await api("/api/webrtc/token");
-    if (!d.token) { toast("WebRTC: No token returned", "error"); return; }
-    _rtcClient = new RTC({ login_token: d.token });
+    if (!d.sip_username) { toast("WebRTC: Not configured", "error"); return; }
+    _rtcClient = new RTC({ login: d.sip_username, password: d.sip_password });
     _rtcClient.on("telnyx.ready", () => {
       console.log("[WebRTC] Ready");
       toast("Live calling ready", "success");

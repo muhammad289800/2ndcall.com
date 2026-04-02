@@ -322,7 +322,12 @@ def create_app() -> Flask:
     # ── WebRTC calling ────────────────────────────────────────────────────
 
     # Auto-created or set via env
-    _webrtc_credential = {"id": os.environ.get("TELNYX_CREDENTIAL_ID", "").strip()}
+    # WebRTC uses SIP credentials for authentication (more reliable than JWT tokens)
+    _webrtc_cred = {
+        "id": os.environ.get("TELNYX_CREDENTIAL_ID", "").strip(),
+        "sip_username": os.environ.get("TELNYX_SIP_USERNAME", "").strip(),
+        "sip_password": os.environ.get("TELNYX_SIP_PASSWORD", "").strip(),
+    }
 
     def _get_telnyx_headers() -> dict[str, str]:
         tp = providers.get("telnyx")
@@ -331,26 +336,14 @@ def create_app() -> Flask:
     @app.post("/api/webrtc/setup")
     @require_admin
     def webrtc_setup():
-        """Auto-create a Telnyx Telephony Credential for WebRTC. Admin only."""
+        """Auto-create a Telnyx Telephony Credential for WebRTC."""
         tp = providers.get("telnyx")
         if not tp or not tp.is_configured():
             return jsonify({"error": "Telnyx not configured. Set TELNYX_API_KEY."}), 503
-        if _webrtc_credential["id"]:
-            # Verify the credential works by trying to generate a token
-            try:
-                test_resp = http_requests.post(
-                    f"https://api.telnyx.com/v2/telephony_credentials/{_webrtc_credential['id']}/token",
-                    headers=_get_telnyx_headers(), json={}, timeout=10,
-                )
-                if test_resp.status_code < 400:
-                    return jsonify({"ok": True, "credential_id": _webrtc_credential["id"], "message": "Already configured and working."})
-                # Token failed — credential is broken, recreate it
-                _webrtc_credential["id"] = ""
-            except Exception:
-                _webrtc_credential["id"] = ""
+        if _webrtc_cred["sip_username"] and _webrtc_cred["sip_password"]:
+            return jsonify({"ok": True, "message": "Already configured.", "sip_username": _webrtc_cred["sip_username"]})
 
-        # Telephony credentials require a credential_connection (not a Voice API app).
-        # Try to find an existing credential_connection, or create one.
+        # Find or create a credential_connection
         conn_id = None
         try:
             r = http_requests.get("https://api.telnyx.com/v2/credential_connections", headers=_get_telnyx_headers(), timeout=15)
@@ -361,8 +354,6 @@ def create_app() -> Flask:
                     break
         except Exception:
             pass
-
-        # If no credential_connection exists, create one
         if not conn_id:
             try:
                 r = http_requests.post(
@@ -372,73 +363,34 @@ def create_app() -> Flask:
                     timeout=15,
                 )
                 if r.status_code < 400:
-                    cdata = r.json().get("data", r.json())
-                    conn_id = cdata.get("id", "")
+                    conn_id = r.json().get("data", r.json()).get("id", "")
             except Exception:
                 pass
-
         if not conn_id:
-            return jsonify({"error": "Could not find or create a Credential Connection. Check your Telnyx account."}), 503
+            return jsonify({"error": "Could not find or create a Credential Connection."}), 503
 
+        # Create credential with SIP username/password
+        import secrets as _secrets
+        sip_user = f"2ndcall_{_secrets.token_hex(6)}"
+        sip_pass = _secrets.token_urlsafe(20)
         try:
-            import secrets as _secrets
-            sip_user = f"2ndcall_{_secrets.token_hex(4)}"
-            sip_pass = _secrets.token_urlsafe(16)
             resp = http_requests.post(
                 "https://api.telnyx.com/v2/telephony_credentials",
                 headers=_get_telnyx_headers(),
-                json={
-                    "connection_id": conn_id,
-                    "name": "2ndCall-WebRTC",
-                    "sip_username": sip_user,
-                    "sip_password": sip_pass,
-                },
+                json={"connection_id": conn_id, "name": "2ndCall-WebRTC", "sip_username": sip_user, "sip_password": sip_pass},
                 timeout=15,
             )
             if resp.status_code >= 400:
                 return jsonify({"error": f"Failed to create credential: {resp.text}"}), 502
             data = resp.json().get("data", resp.json())
-            cred_id = data.get("id", "")
-            if not cred_id:
-                return jsonify({"error": "No credential ID returned.", "raw": data}), 502
-            _webrtc_credential["id"] = cred_id
+            _webrtc_cred["id"] = data.get("id", "")
+            _webrtc_cred["sip_username"] = sip_user
+            _webrtc_cred["sip_password"] = sip_pass
             return jsonify({
                 "ok": True,
-                "credential_id": cred_id,
-                "message": "WebRTC credential created! Save this as TELNYX_CREDENTIAL_ID env var for persistence.",
+                "sip_username": sip_user,
+                "message": f"WebRTC configured! Set these on Railway for persistence: TELNYX_SIP_USERNAME={sip_user}  TELNYX_SIP_PASSWORD={sip_pass}",
             })
-        except Exception as exc:
-            return jsonify({"error": str(exc)}), 500
-
-    @app.get("/api/webrtc/connections")
-    @require_admin
-    def webrtc_connections():
-        """List all Telnyx connections to find the correct connection_id."""
-        tp = providers.get("telnyx")
-        if not tp or not tp.is_configured():
-            return jsonify({"error": "Telnyx not configured."}), 503
-        try:
-            resp = http_requests.get(
-                "https://api.telnyx.com/v2/credential_connections",
-                headers=_get_telnyx_headers(),
-                timeout=15,
-            )
-            cred_conns = resp.json().get("data", []) if resp.status_code < 400 else []
-            resp2 = http_requests.get(
-                "https://api.telnyx.com/v2/fqdn_connections",
-                headers=_get_telnyx_headers(),
-                timeout=15,
-            )
-            fqdn_conns = resp2.json().get("data", []) if resp2.status_code < 400 else []
-            all_conns = []
-            for c in cred_conns + fqdn_conns:
-                all_conns.append({
-                    "id": c.get("id"),
-                    "name": c.get("connection_name") or c.get("user_name") or c.get("id"),
-                    "type": c.get("record_type", "unknown"),
-                    "active": c.get("active", True),
-                })
-            return jsonify({"connections": all_conns, "current_connection_id": tp.connection_id})
         except Exception as exc:
             return jsonify({"error": str(exc)}), 500
 
@@ -447,35 +399,20 @@ def create_app() -> Flask:
     def webrtc_status():
         tp = providers.get("telnyx")
         return jsonify({
-            "configured": bool(_webrtc_credential["id"]),
-            "credential_id": _webrtc_credential["id"] or None,
+            "configured": bool(_webrtc_cred["sip_username"] and _webrtc_cred["sip_password"]),
             "telnyx_configured": bool(tp and tp.is_configured()),
-            "connection_id": tp.connection_id if tp else None,
         })
 
     @app.get("/api/webrtc/token")
     @require_auth
     def webrtc_token():
-        """Generate a JWT token for Telnyx WebRTC client."""
-        tp = providers.get("telnyx")
-        if not tp or not tp.is_configured():
-            return jsonify({"error": "Telnyx not configured."}), 503
-        cred_id = _webrtc_credential["id"]
-        if not cred_id:
-            return jsonify({"error": "WebRTC not set up. Go to Settings and click 'Setup WebRTC Calling'."}), 503
-        try:
-            resp = http_requests.post(
-                f"https://api.telnyx.com/v2/telephony_credentials/{cred_id}/token",
-                headers=_get_telnyx_headers(),
-                json={},
-                timeout=15,
-            )
-            if resp.status_code >= 400:
-                return jsonify({"error": f"Token generation failed: {resp.text}"}), 502
-            token = resp.text.strip().strip('"')
-            return jsonify({"token": token, "credential_id": cred_id})
-        except Exception as exc:
-            return jsonify({"error": str(exc)}), 500
+        """Return SIP credentials for WebRTC client login."""
+        if not _webrtc_cred["sip_username"] or not _webrtc_cred["sip_password"]:
+            return jsonify({"error": "WebRTC not set up. Go to Settings > Setup WebRTC."}), 503
+        return jsonify({
+            "sip_username": _webrtc_cred["sip_username"],
+            "sip_password": _webrtc_cred["sip_password"],
+        })
 
     @app.get("/sw.js")
     def service_worker():
