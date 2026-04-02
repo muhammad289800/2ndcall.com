@@ -1027,7 +1027,8 @@ def create_app() -> Flask:
             call_control_id = str(payload_data.get("call_control_id", "")).strip()
             call_leg_id = str(payload_data.get("call_leg_id", "")).strip()
             direction_raw = str(payload_data.get("direction", "")).strip()
-            direction = "inbound" if direction_raw == "incoming" or "initiated" in event_type else "outbound"
+            direction = "inbound" if direction_raw == "incoming" else "outbound"
+            state = str(payload_data.get("state", "")).strip()
 
             storage.log_call(
                 provider="telnyx",
@@ -1041,18 +1042,18 @@ def create_app() -> Flask:
                 response=body,
             )
 
-            # Incoming call: answer it and make it available for WebRTC pickup
+            telnyx_provider = providers.get("telnyx")
+            api_key = telnyx_provider.api_key if telnyx_provider else ""
+            cc_headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+
+            # ── Incoming call: answer + speak greeting + store for browser ──
             if event_type == "call.initiated" and direction_raw == "incoming" and call_control_id:
                 import time as _time
-                telnyx_provider = providers.get("telnyx")
-                if telnyx_provider and telnyx_provider.is_configured():
-                    # Answer the call via Call Control API
+                if api_key:
                     try:
                         http_requests.post(
                             f"https://api.telnyx.com/v2/calls/{call_control_id}/actions/answer",
-                            headers={"Authorization": f"Bearer {telnyx_provider.api_key}", "Content-Type": "application/json"},
-                            json={"client_state": ""},
-                            timeout=10,
+                            headers=cc_headers, json={}, timeout=10,
                         )
                     except Exception:
                         pass
@@ -1065,6 +1066,25 @@ def create_app() -> Flask:
                     "event_type": event_type,
                     "_ts": _time.time(),
                 })
+
+            # ── Call answered: speak greeting (for both incoming and outgoing) ──
+            if event_type == "call.answered" and call_control_id and api_key:
+                say_text = "Hello, you are connected through 2nd Call."
+                if direction_raw == "incoming":
+                    say_text = "Thank you for calling. Please hold while we connect you."
+                try:
+                    http_requests.post(
+                        f"https://api.telnyx.com/v2/calls/{call_control_id}/actions/speak",
+                        headers=cc_headers,
+                        json={
+                            "payload": say_text,
+                            "voice": "female",
+                            "language": "en-US",
+                        },
+                        timeout=10,
+                    )
+                except Exception:
+                    pass
 
         return jsonify({"received": True})
 
