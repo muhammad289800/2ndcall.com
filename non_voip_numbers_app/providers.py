@@ -516,16 +516,28 @@ class TelnyxProvider(BaseProvider):
                 "SMS may fail with 40305 until the number is linked to a messaging profile."
             )
 
-        # Assign to voice connection so outbound/inbound calls work immediately.
+        # Assign to Voice API Application so webhooks + call control work immediately.
         if self.connection_id and number_id:
             try:
+                # Try as call_control_application first (Voice API App)
                 voice_assignment = self._request(
                     "PATCH",
-                    f"/phone_numbers/{number_id}",
-                    json_payload={"connection_id": self.connection_id},
+                    f"/phone_numbers/{number_id}/voice",
+                    json_payload={
+                        "connection_id": self.connection_id,
+                        "tech_prefix_enabled": False,
+                    },
                 )
-            except ProviderError as exc:
-                warnings.append(f"Failed to assign number to voice connection: {exc}")
+            except ProviderError:
+                try:
+                    # Fallback: assign via phone_numbers endpoint
+                    voice_assignment = self._request(
+                        "PATCH",
+                        f"/phone_numbers/{number_id}",
+                        json_payload={"connection_id": self.connection_id},
+                    )
+                except ProviderError as exc:
+                    warnings.append(f"Failed to assign number to voice application: {exc}")
         elif not self.connection_id:
             warnings.append(
                 "TELNYX_CONNECTION_ID is not configured. "
