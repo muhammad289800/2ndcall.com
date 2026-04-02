@@ -1910,6 +1910,7 @@ document.getElementById("dp-call-btn").addEventListener("click", async () => {
     dbg.push("window.Telnyx: " + (typeof window.Telnyx));
     const allGlobals = Object.keys(window).filter(k => k.toLowerCase().includes("telnyx")).join(", ");
     dbg.push("globals: " + (allGlobals || "none"));
+    if (window.TelnyxWebRTC) dbg.push("keys: " + Object.keys(window.TelnyxWebRTC).slice(0,10).join(","));
     setStatus("dp-status", dbg.join(" | "), true);
   }
 });
@@ -2826,13 +2827,26 @@ async function initWebRTC() {
     } catch { console.warn("[WebRTC] Failed to load SDK"); return; }
   }
 
-  // Find the TelnyxRTC constructor
-  const RTC = (typeof TelnyxRTC !== "undefined") ? TelnyxRTC
-    : (window.TelnyxWebRTC && window.TelnyxWebRTC.TelnyxRTC) ? window.TelnyxWebRTC.TelnyxRTC
-    : (window.Telnyx && window.Telnyx.TelnyxRTC) ? window.Telnyx.TelnyxRTC
-    : null;
+  // Find the TelnyxRTC constructor — check all possible export paths
+  let RTC = null;
+  if (typeof TelnyxRTC !== "undefined") RTC = TelnyxRTC;
+  else if (window.TelnyxWebRTC) {
+    RTC = window.TelnyxWebRTC.TelnyxRTC || window.TelnyxWebRTC.default || window.TelnyxWebRTC;
+    // If it's a module with a default export
+    if (RTC && !RTC.prototype && RTC.TelnyxRTC) RTC = RTC.TelnyxRTC;
+    if (RTC && !RTC.prototype && RTC.default) RTC = RTC.default;
+  }
+  if (!RTC || typeof RTC !== "function") {
+    // Last resort: scan TelnyxWebRTC for any constructor
+    if (window.TelnyxWebRTC) {
+      for (const key of Object.keys(window.TelnyxWebRTC)) {
+        const val = window.TelnyxWebRTC[key];
+        if (typeof val === "function" && val.prototype) { RTC = val; break; }
+      }
+    }
+  }
 
-  if (!RTC) { console.warn("[WebRTC] TelnyxRTC class not found after loading SDK"); return; }
+  if (!RTC || typeof RTC !== "function") { console.warn("[WebRTC] TelnyxRTC class not found. Keys:", window.TelnyxWebRTC ? Object.keys(window.TelnyxWebRTC).join(",") : "none"); return; }
 
   try {
     const d = await api("/api/webrtc/token");
