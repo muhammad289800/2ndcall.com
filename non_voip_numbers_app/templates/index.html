@@ -1890,12 +1890,20 @@ document.getElementById("dp-call-btn").addEventListener("click", async () => {
   if (!dialpadNum) { setStatus("dp-status","Enter a number first", true); return; }
   const from = document.getElementById("dp-from").value;
   if (!from) { setStatus("dp-status","No number to call from. Get a number first.", true); return; }
-  // Always use WebRTC for live calls
+  // Try to init WebRTC if not ready
+  if (!_rtcClient) {
+    setStatus("dp-status","Connecting WebRTC…");
+    try { await initWebRTC(); } catch {}
+    // Wait a moment for connection
+    if (!_rtcClient) {
+      await new Promise(r => setTimeout(r, 2000));
+    }
+  }
   if (_rtcClient) {
     closeModal("modal-dialpad");
     makeWebRTCCall(from, dialpadNum);
   } else {
-    setStatus("dp-status","WebRTC not ready. Go to Settings > Setup WebRTC first.", true);
+    setStatus("dp-status","WebRTC could not connect. Check Settings > WebRTC Calling.", true);
   }
 });
 
