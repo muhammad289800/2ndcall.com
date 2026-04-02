@@ -805,6 +805,28 @@ def create_app() -> Flask:
         except (ProviderError, ValueError) as exc:
             return jsonify({"error": str(exc)}), 400
 
+    @app.post("/api/admin/assign-number")
+    @require_admin
+    def admin_assign_number():
+        """Admin: assign an existing Telnyx number to a user by email."""
+        body = payload()
+        phone_number = str(body.get("phone_number", "")).strip()
+        email = str(body.get("email", "")).strip().lower()
+        if not phone_number or not email:
+            return jsonify({"error": "phone_number and email are required."}), 400
+        user = storage.get_user_by_email(email)
+        if not user:
+            return jsonify({"error": f"User {email} not found."}), 404
+        record = storage.upsert_number(
+            provider="telnyx",
+            phone_number=phone_number,
+            provider_number_id=None,
+            line_type="unknown",
+            status="active",
+            metadata={"assigned_to": email, "user_id": user["id"]},
+        )
+        return jsonify({"ok": True, "number": record, "user": user})
+
     @app.get("/api/messages")
     @require_auth
     def list_messages():
