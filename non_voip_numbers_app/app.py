@@ -1148,20 +1148,32 @@ def create_app() -> Flask:
                     "_ts": _time.time(),
                 }
 
-            # ── Call answered: keep alive with TTS, update status ──
-            if event_type == "call.answered" and call_control_id and api_key:
-                if call_control_id in _active_calls:
+            # ── Call answered: update status, keep alive with TTS ──
+            if event_type == "call.answered" and call_control_id:
+                import time as _time
+                # Track if not already tracked
+                if call_control_id not in _active_calls:
+                    _active_calls[call_control_id] = {
+                        "call_control_id": call_control_id,
+                        "from": from_number,
+                        "to": to_number,
+                        "direction": direction,
+                        "status": "answered",
+                        "_ts": _time.time(),
+                    }
+                else:
                     _active_calls[call_control_id]["status"] = "answered"
-                # Speak so the call stays alive (Telnyx drops silent calls)
-                try:
-                    http_requests.post(
-                        f"https://api.telnyx.com/v2/calls/{call_control_id}/actions/speak",
-                        headers=cc_headers,
-                        json={"payload": "Connected through 2nd Call.", "voice": "female", "language": "en-US"},
-                        timeout=10,
-                    )
-                except Exception:
-                    pass
+                # Speak so the call stays alive
+                if api_key:
+                    try:
+                        http_requests.post(
+                            f"https://api.telnyx.com/v2/calls/{call_control_id}/actions/speak",
+                            headers=cc_headers,
+                            json={"payload": "Connected through 2nd Call.", "voice": "female", "language": "en-US"},
+                            timeout=10,
+                        )
+                    except Exception:
+                        pass
 
             # ── Call hangup: clean up ──
             if event_type == "call.hangup" and call_control_id:
@@ -1225,6 +1237,16 @@ def create_app() -> Flask:
                 "pricing": provider_pricing,
             }
         )
+
+    @app.get("/api/debug/webhook-test")
+    def webhook_test():
+        """Simple GET endpoint to test if the webhook URL is reachable."""
+        return jsonify({"ok": True, "message": "Webhook endpoint is reachable. Use POST for actual webhooks.", "path": "/webhooks/telnyx/events"})
+
+    @app.get("/webhooks/telnyx/events")
+    def telnyx_webhook_get():
+        """GET handler so you can test the URL in a browser."""
+        return jsonify({"ok": True, "message": "Telnyx webhook endpoint is active. Telnyx will POST events here."})
 
     @app.get("/api/debug/webhooks")
     @require_admin
