@@ -1151,9 +1151,18 @@ def create_app() -> Flask:
             api_key = telnyx_provider.api_key if telnyx_provider else ""
             cc_headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
 
-            # ── Incoming call: DO NOT auto-answer. Just store for browser notification. ──
+            # ── Incoming call: answer it and store for browser notification ──
             if event_type == "call.initiated" and direction_raw == "incoming" and call_control_id:
                 import time as _time
+                # Answer the call so the caller stops hearing ringing
+                if api_key:
+                    try:
+                        http_requests.post(
+                            f"https://api.telnyx.com/v2/calls/{call_control_id}/actions/answer",
+                            headers=cc_headers, json={}, timeout=10,
+                        )
+                    except Exception:
+                        pass
                 _incoming_calls.append({
                     "call_control_id": call_control_id,
                     "call_leg_id": call_leg_id,
@@ -1162,6 +1171,18 @@ def create_app() -> Flask:
                     "event_type": event_type,
                     "_ts": _time.time(),
                 })
+
+            # ── Incoming call answered: speak greeting so caller knows they're connected ──
+            if event_type == "call.answered" and direction_raw == "incoming" and call_control_id and api_key:
+                try:
+                    http_requests.post(
+                        f"https://api.telnyx.com/v2/calls/{call_control_id}/actions/speak",
+                        headers=cc_headers,
+                        json={"payload": "Thank you for calling. You are now connected through 2nd Call.", "voice": "female", "language": "en-US"},
+                        timeout=10,
+                    )
+                except Exception:
+                    pass
 
             # ── Outgoing call initiated: track it ──
             if event_type == "call.initiated" and direction_raw != "incoming" and call_control_id:
