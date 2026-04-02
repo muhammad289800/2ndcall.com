@@ -984,6 +984,19 @@ def create_app() -> Flask:
 
     # In-memory store for active incoming calls (for polling by browser)
     _incoming_calls: list[dict[str, Any]] = []
+    _active_calls: dict[str, dict[str, Any]] = {}  # call_control_id -> call info
+
+    @app.get("/api/calls/active")
+    @require_auth
+    def get_active_calls():
+        """Poll for active outbound call status."""
+        import time
+        now = time.time()
+        # Clean up old calls (> 5 minutes)
+        stale = [k for k, v in _active_calls.items() if now - v.get("_ts", 0) > 300]
+        for k in stale:
+            _active_calls.pop(k, None)
+        return jsonify({"calls": list(_active_calls.values())})
 
     @app.get("/api/calls/incoming")
     @require_auth
@@ -1123,9 +1136,37 @@ def create_app() -> Flask:
                     "_ts": _time.time(),
                 })
 
-            # ── Call hangup: remove from incoming list ──
+            # ── Outgoing call initiated: track it ──
+            if event_type == "call.initiated" and direction_raw != "incoming" and call_control_id:
+                import time as _time
+                _active_calls[call_control_id] = {
+                    "call_control_id": call_control_id,
+                    "from": from_number,
+                    "to": to_number,
+                    "direction": "outbound",
+                    "status": "ringing",
+                    "_ts": _time.time(),
+                }
+
+            # ── Call answered: keep alive with TTS, update status ──
+            if event_type == "call.answered" and call_control_id and api_key:
+                if call_control_id in _active_calls:
+                    _active_calls[call_control_id]["status"] = "answered"
+                # Speak so the call stays alive (Telnyx drops silent calls)
+                try:
+                    http_requests.post(
+                        f"https://api.telnyx.com/v2/calls/{call_control_id}/actions/speak",
+                        headers=cc_headers,
+                        json={"payload": "Connected through 2nd Call.", "voice": "female", "language": "en-US"},
+                        timeout=10,
+                    )
+                except Exception:
+                    pass
+
+            # ── Call hangup: clean up ──
             if event_type == "call.hangup" and call_control_id:
                 _incoming_calls[:] = [c for c in _incoming_calls if c.get("call_control_id") != call_control_id]
+                _active_calls.pop(call_control_id, None)
 
         return jsonify({"received": True})
 

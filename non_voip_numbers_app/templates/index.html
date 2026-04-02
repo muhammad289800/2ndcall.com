@@ -1906,20 +1906,58 @@ async function handleDialpadCall() {
     return;
   }
 
-  // Fallback: API call
+  // API call with call overlay
   const provider = (S.numbers.find(n => n.phone_number === from) || {}).provider || "telnyx";
+  const toNum = dialpadNum;
   setStatus("dp-status","Placing call…");
   try {
-    await api("/api/calls/start", { method:"POST", body: JSON.stringify({
-      provider, from_number: from, to_number: dialpadNum,
-      say_text: "Hello, this is a call from 2ndCall.", estimated_minutes: 1
+    const result = await api("/api/calls/start", { method:"POST", body: JSON.stringify({
+      provider, from_number: from, to_number: toNum,
+      say_text: "", estimated_minutes: 1
     })});
-    setStatus("dp-status","Call placed!");
-    toast("Call placed to " + dialpadNum);
-    setTimeout(() => closeModal("modal-dialpad"), 1500);
+    closeModal("modal-dialpad");
+    // Show call overlay
+    showOutboundCallUI(toNum, result.call?.id);
     loadCalls();
   } catch(e) { setStatus("dp-status", e.message, true); }
 }
+
+function showOutboundCallUI(toNumber, callId) {
+  const name = contactName(toNumber);
+  const overlay = document.getElementById("call-overlay");
+  overlay.classList.remove("hidden");
+  document.getElementById("call-avatar").style.background = avatarColor(toNumber);
+  document.getElementById("call-avatar").textContent = avatarText(toNumber);
+  document.getElementById("call-contact-name").textContent = name;
+  document.getElementById("call-contact-number").textContent = toNumber;
+  document.getElementById("call-status").textContent = "Calling…";
+  document.getElementById("call-timer").style.display = "none";
+  document.getElementById("call-incoming-actions").classList.add("hidden");
+  document.getElementById("call-mute-btn").style.display = "none";
+  document.getElementById("call-speaker-btn").style.display = "none";
+  document.getElementById("call-hangup-btn").style.display = "";
+  // Poll for call status updates
+  _callStatusPollTimer = setInterval(async () => {
+    try {
+      const d = await api("/api/calls/active");
+      const calls = d.calls || [];
+      if (calls.length === 0) {
+        // Call ended
+        clearInterval(_callStatusPollTimer);
+        updateCallStatus("Call ended");
+        setTimeout(endCallUI, 2000);
+        return;
+      }
+      const c = calls[0];
+      if (c.status === "answered") {
+        updateCallStatus("Connected");
+        document.getElementById("call-timer").style.display = "";
+        if (!_callTimer) startCallTimer();
+      }
+    } catch {}
+  }, 2000);
+}
+let _callStatusPollTimer = null;
 
 // ════════════════════════════════════════════
 //  NEW MESSAGE MODAL
@@ -3013,11 +3051,18 @@ function makeWebRTCCall(fromNumber, toNumber) {
   }
 }
 
-function hangupCall() {
+async function hangupCall() {
   if (_activeCall) {
     try { _activeCall.hangup(); } catch {}
     _activeCall = null;
   }
+  // Hangup any active API calls
+  try {
+    const d = await api("/api/calls/active");
+    for (const c of (d.calls || [])) {
+      api("/api/calls/hangup", { method: "POST", body: JSON.stringify({ call_control_id: c.call_control_id }) }).catch(() => {});
+    }
+  } catch {}
   endCallUI();
 }
 
@@ -3058,11 +3103,12 @@ function startCallTimer() {
 function endCallUI() {
   document.getElementById("call-overlay").classList.add("hidden");
   if (_callTimer) { clearInterval(_callTimer); _callTimer = null; }
+  if (_callStatusPollTimer) { clearInterval(_callStatusPollTimer); _callStatusPollTimer = null; }
   _activeCall = null;
   _isMuted = false;
   _pendingIncoming = null;
-  // Refresh call logs
-  if (S.nav === "calls") loadCalls();
+  _callSeconds = 0;
+  loadCalls();
 }
 
 // ════════════════════════════════════════════
