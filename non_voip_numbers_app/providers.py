@@ -589,7 +589,6 @@ class TelnyxProvider(BaseProvider):
     def start_call(self, from_number: str, to_number: str, say_text: str) -> dict[str, Any]:
         if not self.connection_id:
             raise ProviderError("TELNYX_CONNECTION_ID is required for outbound calls.")
-        profile_sync = self._auto_sync_from_number_to_messaging_profile(from_number, strict=False)
         call_payload: dict[str, Any] = {
             "connection_id": self.connection_id,
             "from": from_number,
@@ -597,13 +596,14 @@ class TelnyxProvider(BaseProvider):
         }
         if self.call_webhook_url:
             call_payload["webhook_url"] = self.call_webhook_url
+        if say_text:
+            call_payload["answering_machine_detection"] = "disabled"
         payload = self._request("POST", "/calls", json_payload=call_payload)
         data = payload.get("data", {})
         return {
             "id": data.get("call_control_id") or data.get("call_leg_id"),
             "status": data.get("state", "initiated"),
             "raw": payload,
-            "auto_profile_sync": profile_sync,
         }
 
     def pricing_profile(self) -> dict[str, Any]:
