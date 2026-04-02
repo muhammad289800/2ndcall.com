@@ -2809,16 +2809,17 @@ let _pendingIncoming = null;
 
 async function initWebRTC() {
   // Load Telnyx WebRTC SDK dynamically
-  if (typeof TelnyxRTC === "undefined" && (!window.TelnyxWebRTC || !window.TelnyxWebRTC.TelnyxRTC)) {
+  // Load the correct SDK bundle that exposes TelnyxRTC globally
+  if (typeof TelnyxRTC === "undefined") {
     try {
       await new Promise((resolve, reject) => {
         const s = document.createElement("script");
-        s.src = "https://unpkg.com/@telnyx/webrtc/lib/bundle.js";
+        // Use the UMD bundle which exposes TelnyxRTC as a global
+        s.src = "https://unpkg.com/@telnyx/webrtc@2.10.3/lib/telnyxrtc.umd.js";
         s.onload = resolve;
         s.onerror = () => {
-          // Try alternate CDN
           const s2 = document.createElement("script");
-          s2.src = "https://cdn.jsdelivr.net/npm/@telnyx/webrtc/lib/bundle.js";
+          s2.src = "https://cdn.jsdelivr.net/npm/@telnyx/webrtc@2.10.3/lib/telnyxrtc.umd.js";
           s2.onload = resolve; s2.onerror = reject;
           document.head.appendChild(s2);
         };
@@ -2827,26 +2828,8 @@ async function initWebRTC() {
     } catch { console.warn("[WebRTC] Failed to load SDK"); return; }
   }
 
-  // Find the TelnyxRTC constructor — check all possible export paths
-  let RTC = null;
-  if (typeof TelnyxRTC !== "undefined") RTC = TelnyxRTC;
-  else if (window.TelnyxWebRTC) {
-    RTC = window.TelnyxWebRTC.TelnyxRTC || window.TelnyxWebRTC.default || window.TelnyxWebRTC;
-    // If it's a module with a default export
-    if (RTC && !RTC.prototype && RTC.TelnyxRTC) RTC = RTC.TelnyxRTC;
-    if (RTC && !RTC.prototype && RTC.default) RTC = RTC.default;
-  }
-  if (!RTC || typeof RTC !== "function") {
-    // Last resort: scan TelnyxWebRTC for any constructor
-    if (window.TelnyxWebRTC) {
-      for (const key of Object.keys(window.TelnyxWebRTC)) {
-        const val = window.TelnyxWebRTC[key];
-        if (typeof val === "function" && val.prototype) { RTC = val; break; }
-      }
-    }
-  }
-
-  if (!RTC || typeof RTC !== "function") { console.warn("[WebRTC] TelnyxRTC class not found. Keys:", window.TelnyxWebRTC ? Object.keys(window.TelnyxWebRTC).join(",") : "none"); return; }
+  const RTC = (typeof TelnyxRTC !== "undefined") ? TelnyxRTC : null;
+  if (!RTC) { console.warn("[WebRTC] TelnyxRTC not found after loading UMD bundle"); return; }
 
   try {
     const d = await api("/api/webrtc/token");
