@@ -480,14 +480,15 @@
     ───────────────────────────── */
     .modal-overlay {
       position: fixed; inset: 0; background: rgba(0,0,0,.7); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
-      display: flex; align-items: center; justify-content: center; z-index: 500; padding: 20px;
-      animation: fadeOverlay .2s ease;
+      display: flex; align-items: center; justify-content: center; z-index: 500; padding: 16px;
+      animation: fadeOverlay .2s ease; overflow-y: auto;
     }
     @keyframes fadeOverlay { from { opacity: 0; } to { opacity: 1; } }
     .modal {
       background: var(--surface); border: 1px solid var(--border-h); border-radius: 20px;
       width: 100%; max-width: 440px; overflow: hidden;
       box-shadow: var(--shadow-lg); animation: modalIn .25s ease;
+      max-height: 95vh; overflow-y: auto; margin: auto;
     }
     @keyframes modalIn { from { opacity: 0; transform: scale(.95) translateY(10px); } to { opacity: 1; transform: scale(1) translateY(0); } }
     .modal-header {
@@ -632,6 +633,15 @@
       .panel-header h2 { font-size: 18px; }
       .convos-header { padding: 16px 14px; }
       .number-cards { grid-template-columns: 1fr; }
+      .modal { max-height: 90vh; border-radius: 16px; }
+      .modal-overlay { padding: 8px; align-items: flex-start; padding-top: 5vh; }
+      .modal-body { padding: 16px; }
+      .dialpad-display { font-size: 22px; padding: 14px 16px; min-height: 52px; margin-bottom: 12px; }
+      .dialpad-grid { gap: 8px; margin-bottom: 12px; }
+      .dial-key { font-size: 18px; }
+      .dial-actions { gap: 16px; }
+      .dial-call { width: 60px; height: 60px; }
+      .dial-clear { width: 48px; height: 48px; }
     }
   </style>
 </head>
@@ -1880,23 +1890,12 @@ document.getElementById("dp-call-btn").addEventListener("click", async () => {
   if (!dialpadNum) { setStatus("dp-status","Enter a number first", true); return; }
   const from = document.getElementById("dp-from").value;
   if (!from) { setStatus("dp-status","No number to call from. Get a number first.", true); return; }
-  // Use WebRTC if available, otherwise fallback to API
+  // Always use WebRTC for live calls
   if (_rtcClient) {
     closeModal("modal-dialpad");
     makeWebRTCCall(from, dialpadNum);
   } else {
-    const provider = (S.numbers.find(n => n.phone_number === from) || {}).provider || "mock";
-    setStatus("dp-status","Initiating call…");
-    try {
-      await api("/api/calls/start", { method:"POST", body: JSON.stringify({
-        provider, from_number: from, to_number: dialpadNum,
-        say_text: "This is a test call from 2ndCall.", estimated_minutes: 1
-      })});
-      setStatus("dp-status","Call initiated!");
-      toast("Call initiated to " + dialpadNum);
-      setTimeout(() => closeModal("modal-dialpad"), 1500);
-      loadCalls();
-    } catch(e) { setStatus("dp-status", e.message, true); }
+    setStatus("dp-status","WebRTC not ready. Go to Settings > Setup WebRTC first.", true);
   }
 });
 
