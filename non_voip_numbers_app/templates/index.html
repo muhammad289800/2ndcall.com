@@ -2793,25 +2793,43 @@ let _pendingIncoming = null;
 
 async function initWebRTC() {
   // Load Telnyx WebRTC SDK dynamically
-  if (typeof TelnyxRTC === "undefined") {
+  if (typeof TelnyxRTC === "undefined" && (!window.TelnyxWebRTC || !window.TelnyxWebRTC.TelnyxRTC)) {
     try {
       await new Promise((resolve, reject) => {
         const s = document.createElement("script");
-        s.src = "https://cdn.jsdelivr.net/npm/@telnyx/webrtc@2/lib/bundle.js";
-        s.onload = resolve; s.onerror = reject;
+        s.src = "https://unpkg.com/@telnyx/webrtc/lib/bundle.js";
+        s.onload = resolve;
+        s.onerror = () => {
+          // Try alternate CDN
+          const s2 = document.createElement("script");
+          s2.src = "https://cdn.jsdelivr.net/npm/@telnyx/webrtc/lib/bundle.js";
+          s2.onload = resolve; s2.onerror = reject;
+          document.head.appendChild(s2);
+        };
         document.head.appendChild(s);
       });
-    } catch { console.warn("Failed to load Telnyx WebRTC SDK"); return; }
+    } catch { console.warn("[WebRTC] Failed to load SDK"); return; }
   }
+
+  // Find the TelnyxRTC constructor
+  const RTC = (typeof TelnyxRTC !== "undefined") ? TelnyxRTC
+    : (window.TelnyxWebRTC && window.TelnyxWebRTC.TelnyxRTC) ? window.TelnyxWebRTC.TelnyxRTC
+    : (window.Telnyx && window.Telnyx.TelnyxRTC) ? window.Telnyx.TelnyxRTC
+    : null;
+
+  if (!RTC) { console.warn("[WebRTC] TelnyxRTC class not found after loading SDK"); return; }
+
   try {
     const d = await api("/api/webrtc/token");
-    if (!d.token) return;
-    _rtcClient = new TelnyxRTC({ login_token: d.token });
-    _rtcClient.on("telnyx.ready", () => console.log("[WebRTC] Ready"));
+    if (!d.token) { console.warn("[WebRTC] No token returned"); return; }
+    _rtcClient = new RTC({ login_token: d.token });
+    _rtcClient.on("telnyx.ready", () => {
+      console.log("[WebRTC] Ready");
+      toast("Live calling ready", "success");
+    });
     _rtcClient.on("telnyx.error", (e) => console.warn("[WebRTC] Error:", e));
     _rtcClient.on("telnyx.notification", handleRTCNotification);
     _rtcClient.connect();
-    // Also poll server for incoming calls (fallback)
     startIncomingPoll();
   } catch(e) { console.warn("[WebRTC] Init failed:", e.message); }
 }
