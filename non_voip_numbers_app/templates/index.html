@@ -1893,8 +1893,7 @@ document.getElementById("dp-call-btn").addEventListener("click", async () => {
   // Try to init WebRTC if not ready
   if (!_rtcClient) {
     setStatus("dp-status","Connecting WebRTC…");
-    try { await initWebRTC(); } catch {}
-    // Wait a moment for connection
+    try { await initWebRTC(); } catch(e) { setStatus("dp-status","Init error: " + e.message, true); return; }
     if (!_rtcClient) {
       await new Promise(r => setTimeout(r, 2000));
     }
@@ -1903,7 +1902,15 @@ document.getElementById("dp-call-btn").addEventListener("click", async () => {
     closeModal("modal-dialpad");
     makeWebRTCCall(from, dialpadNum);
   } else {
-    setStatus("dp-status","WebRTC could not connect. Check Settings > WebRTC Calling.", true);
+    // Show diagnostic info
+    const dbg = [];
+    dbg.push("SDK loaded: " + (document.querySelector('script[src*="telnyx"]') ? "yes" : "no"));
+    dbg.push("TelnyxRTC: " + (typeof TelnyxRTC));
+    dbg.push("window.TelnyxWebRTC: " + (typeof window.TelnyxWebRTC));
+    dbg.push("window.Telnyx: " + (typeof window.Telnyx));
+    const allGlobals = Object.keys(window).filter(k => k.toLowerCase().includes("telnyx")).join(", ");
+    dbg.push("globals: " + (allGlobals || "none"));
+    setStatus("dp-status", dbg.join(" | "), true);
   }
 });
 
