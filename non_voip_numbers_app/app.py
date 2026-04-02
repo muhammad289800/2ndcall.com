@@ -989,12 +989,66 @@ def create_app() -> Flask:
     @require_auth
     def get_incoming_calls():
         """Poll for incoming calls waiting to be answered."""
-        # Return and clear calls older than 60s
         import time
         now = time.time()
         active = [c for c in _incoming_calls if now - c.get("_ts", 0) < 60]
         _incoming_calls[:] = active
         return jsonify({"calls": active})
+
+    @app.post("/api/calls/answer")
+    @require_auth
+    def answer_incoming_call():
+        """Answer an incoming call and speak a greeting."""
+        body = payload()
+        call_control_id = str(body.get("call_control_id", "")).strip()
+        if not call_control_id:
+            return jsonify({"error": "call_control_id is required."}), 400
+        tp = providers.get("telnyx")
+        if not tp or not tp.is_configured():
+            return jsonify({"error": "Telnyx not configured."}), 503
+        headers = {"Authorization": f"Bearer {tp.api_key}", "Content-Type": "application/json"}
+        try:
+            # Answer the call
+            resp = http_requests.post(
+                f"https://api.telnyx.com/v2/calls/{call_control_id}/actions/answer",
+                headers=headers, json={}, timeout=10,
+            )
+            if resp.status_code >= 400:
+                return jsonify({"error": f"Failed to answer: {resp.text}"}), 502
+            # Speak greeting after answering
+            http_requests.post(
+                f"https://api.telnyx.com/v2/calls/{call_control_id}/actions/speak",
+                headers=headers,
+                json={"payload": "Thank you for calling. You are now connected.", "voice": "female", "language": "en-US"},
+                timeout=10,
+            )
+            # Remove from incoming list
+            _incoming_calls[:] = [c for c in _incoming_calls if c.get("call_control_id") != call_control_id]
+            return jsonify({"ok": True, "call_control_id": call_control_id})
+        except Exception as exc:
+            return jsonify({"error": str(exc)}), 500
+
+    @app.post("/api/calls/hangup")
+    @require_auth
+    def hangup_call():
+        """Hang up a call by call_control_id."""
+        body = payload()
+        call_control_id = str(body.get("call_control_id", "")).strip()
+        if not call_control_id:
+            return jsonify({"error": "call_control_id is required."}), 400
+        tp = providers.get("telnyx")
+        if not tp or not tp.is_configured():
+            return jsonify({"error": "Telnyx not configured."}), 503
+        headers = {"Authorization": f"Bearer {tp.api_key}", "Content-Type": "application/json"}
+        try:
+            http_requests.post(
+                f"https://api.telnyx.com/v2/calls/{call_control_id}/actions/hangup",
+                headers=headers, json={}, timeout=10,
+            )
+            _incoming_calls[:] = [c for c in _incoming_calls if c.get("call_control_id") != call_control_id]
+            return jsonify({"ok": True})
+        except Exception as exc:
+            return jsonify({"error": str(exc)}), 500
 
     @app.post("/webhooks/telnyx/events")
     def telnyx_events_webhook():
@@ -1028,7 +1082,6 @@ def create_app() -> Flask:
             call_leg_id = str(payload_data.get("call_leg_id", "")).strip()
             direction_raw = str(payload_data.get("direction", "")).strip()
             direction = "inbound" if direction_raw == "incoming" else "outbound"
-            state = str(payload_data.get("state", "")).strip()
 
             storage.log_call(
                 provider="telnyx",
@@ -1046,18 +1099,9 @@ def create_app() -> Flask:
             api_key = telnyx_provider.api_key if telnyx_provider else ""
             cc_headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
 
-            # ── Incoming call: answer + speak greeting + store for browser ──
+            # ── Incoming call: DO NOT auto-answer. Just store for browser notification. ──
             if event_type == "call.initiated" and direction_raw == "incoming" and call_control_id:
                 import time as _time
-                if api_key:
-                    try:
-                        http_requests.post(
-                            f"https://api.telnyx.com/v2/calls/{call_control_id}/actions/answer",
-                            headers=cc_headers, json={}, timeout=10,
-                        )
-                    except Exception:
-                        pass
-
                 _incoming_calls.append({
                     "call_control_id": call_control_id,
                     "call_leg_id": call_leg_id,
@@ -1067,24 +1111,9 @@ def create_app() -> Flask:
                     "_ts": _time.time(),
                 })
 
-            # ── Call answered: speak greeting (for both incoming and outgoing) ──
-            if event_type == "call.answered" and call_control_id and api_key:
-                say_text = "Hello, you are connected through 2nd Call."
-                if direction_raw == "incoming":
-                    say_text = "Thank you for calling. Please hold while we connect you."
-                try:
-                    http_requests.post(
-                        f"https://api.telnyx.com/v2/calls/{call_control_id}/actions/speak",
-                        headers=cc_headers,
-                        json={
-                            "payload": say_text,
-                            "voice": "female",
-                            "language": "en-US",
-                        },
-                        timeout=10,
-                    )
-                except Exception:
-                    pass
+            # ── Call hangup: remove from incoming list ──
+            if event_type == "call.hangup" and call_control_id:
+                _incoming_calls[:] = [c for c in _incoming_calls if c.get("call_control_id") != call_control_id]
 
         return jsonify({"received": True})
 

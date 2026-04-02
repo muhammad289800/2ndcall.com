@@ -2938,8 +2938,18 @@ function showIncomingCall(call) {
 }
 
 function answerIncoming() {
+  // WebRTC answer
   if (_activeCall && _activeCall.answer) {
     _activeCall.answer();
+  }
+  // API answer for webhook-detected calls
+  if (_pendingIncoming && _pendingIncoming.call_control_id) {
+    api("/api/calls/answer", {
+      method: "POST",
+      body: JSON.stringify({ call_control_id: _pendingIncoming.call_control_id })
+    }).then(() => {
+      toast("Call answered");
+    }).catch(e => toast("Answer failed: " + e.message, "error"));
   }
   _pendingIncoming = null;
   document.getElementById("call-incoming-actions").classList.add("hidden");
@@ -2951,6 +2961,13 @@ function answerIncoming() {
 
 function declineIncoming() {
   if (_activeCall && _activeCall.hangup) _activeCall.hangup();
+  // API hangup for webhook-detected calls
+  if (_pendingIncoming && _pendingIncoming.call_control_id) {
+    api("/api/calls/hangup", {
+      method: "POST",
+      body: JSON.stringify({ call_control_id: _pendingIncoming.call_control_id })
+    }).catch(() => {});
+  }
   _activeCall = null;
   _pendingIncoming = null;
   endCallUI();
