@@ -336,7 +336,18 @@ def create_app() -> Flask:
         if not tp or not tp.is_configured():
             return jsonify({"error": "Telnyx not configured. Set TELNYX_API_KEY."}), 503
         if _webrtc_credential["id"]:
-            return jsonify({"ok": True, "credential_id": _webrtc_credential["id"], "message": "Already configured."})
+            # Verify the credential works by trying to generate a token
+            try:
+                test_resp = http_requests.post(
+                    f"https://api.telnyx.com/v2/telephony_credentials/{_webrtc_credential['id']}/token",
+                    headers=_get_telnyx_headers(), json={}, timeout=10,
+                )
+                if test_resp.status_code < 400:
+                    return jsonify({"ok": True, "credential_id": _webrtc_credential["id"], "message": "Already configured and working."})
+                # Token failed — credential is broken, recreate it
+                _webrtc_credential["id"] = ""
+            except Exception:
+                _webrtc_credential["id"] = ""
 
         # Telephony credentials require a credential_connection (not a Voice API app).
         # Try to find an existing credential_connection, or create one.
@@ -370,10 +381,18 @@ def create_app() -> Flask:
             return jsonify({"error": "Could not find or create a Credential Connection. Check your Telnyx account."}), 503
 
         try:
+            import secrets as _secrets
+            sip_user = f"2ndcall_{_secrets.token_hex(4)}"
+            sip_pass = _secrets.token_urlsafe(16)
             resp = http_requests.post(
                 "https://api.telnyx.com/v2/telephony_credentials",
                 headers=_get_telnyx_headers(),
-                json={"connection_id": conn_id, "name": "2ndCall-WebRTC"},
+                json={
+                    "connection_id": conn_id,
+                    "name": "2ndCall-WebRTC",
+                    "sip_username": sip_user,
+                    "sip_password": sip_pass,
+                },
                 timeout=15,
             )
             if resp.status_code >= 400:
