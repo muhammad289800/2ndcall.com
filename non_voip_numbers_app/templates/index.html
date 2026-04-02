@@ -1054,9 +1054,7 @@
       <label class="form-label">From (your number)</label>
       <select class="form-input" id="dp-from"></select>
       <div style="height:12px;"></div>
-      <div class="dialpad-display" id="dp-display">
-        <span style="color:var(--muted);font-size:16px;font-weight:400;letter-spacing:0;">Enter number</span>
-      </div>
+      <input type="tel" class="dialpad-display" id="dp-display" placeholder="Enter number" value="" autocomplete="off" />
       <div class="dialpad-grid" id="dialpad-grid"></div>
       <div class="dial-actions">
         <button class="dial-clear" id="dp-clear" title="Delete">⌫</button>
@@ -1745,22 +1743,40 @@ function buildDialpad() {
     `<div class="dial-key" data-key="${k}">${k}${s ? `<span class="sub">${s}</span>` : ""}</div>`
   ).join("");
   grid.querySelectorAll(".dial-key").forEach(el => {
-    el.addEventListener("click", () => { dialpadNum += el.dataset.key; updateDialDisplay(); });
+    let holdTimer = null;
+    el.addEventListener("click", () => {
+      if (holdTimer === null) { dialpadNum += el.dataset.key; updateDialDisplay(); }
+      holdTimer = null;
+    });
+    // Long-press "0" to type "+"
+    if (el.dataset.key === "0") {
+      el.addEventListener("pointerdown", () => {
+        holdTimer = setTimeout(() => { dialpadNum += "+"; updateDialDisplay(); holdTimer = "held"; }, 400);
+      });
+      el.addEventListener("pointerup", () => { if (holdTimer && holdTimer !== "held") clearTimeout(holdTimer); });
+      el.addEventListener("pointerleave", () => { if (holdTimer && holdTimer !== "held") clearTimeout(holdTimer); });
+    }
   });
 }
 
 function updateDialDisplay() {
   const d = document.getElementById("dp-display");
-  if (dialpadNum) {
-    d.innerHTML = `<span style="color:var(--text);letter-spacing:2px">${esc(dialpadNum)}</span>`;
-  } else {
-    d.innerHTML = `<span style="color:var(--muted);font-size:16px;font-weight:400;letter-spacing:0">Enter number</span>`;
-  }
+  d.value = dialpadNum;
 }
+
+// Sync keyboard input back to dialpadNum
+document.addEventListener("input", (e) => {
+  if (e.target && e.target.id === "dp-display") {
+    dialpadNum = e.target.value.replace(/[^0-9+*#]/g, "");
+    e.target.value = dialpadNum;
+  }
+});
 
 function openDialpad(prefill = "") {
   dialpadNum = prefill;
   updateDialDisplay();
+  // Focus input so keyboard works immediately
+  setTimeout(() => document.getElementById("dp-display").focus(), 100);
   // Populate from-select
   const sel = document.getElementById("dp-from");
   sel.innerHTML = S.numbers.map(n =>
