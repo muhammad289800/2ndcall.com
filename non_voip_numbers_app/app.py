@@ -101,12 +101,16 @@ def create_app() -> Flask:
             return fn(*args, **kwargs)
         return wrapper
 
+    # Fixed pricing for all users — independent of provider cost
+    NUMBER_PRICE_MONTHLY = 2.00
+    NUMBER_PRICE_YEARLY = 20.00  # save $4/yr
+
     provider_pricing = {
         "telnyx": {
             "rank": 1,
             "label": "Telnyx",
-            "estimated_local_number_monthly_usd": "from $1.00",
-            "notes": "Low-cost API for SMS and voice. Set TELNYX_API_KEY to activate.",
+            "estimated_local_number_monthly_usd": f"${NUMBER_PRICE_MONTHLY:.2f}",
+            "notes": "Non-VoIP numbers for SMS and voice.",
             "integrated_in_app": True,
         },
     }
@@ -154,11 +158,11 @@ def create_app() -> Flask:
                 "Add funds in the Wallet tab first."
             )
 
-    def estimate_action_cost(provider_id: str, action: str, minutes: float = 1.0) -> float:
+    def estimate_action_cost(provider_id: str, action: str, minutes: float = 1.0, plan: str = "monthly") -> float:
         provider = providers[provider_id]
         profile = provider.pricing_profile()
         if action == "number_order":
-            return parse_float(profile.get("number_monthly_usd"), 1.0)
+            return NUMBER_PRICE_YEARLY if plan == "yearly" else NUMBER_PRICE_MONTHLY
         if action == "sms":
             return parse_float(profile.get("sms_outbound_usd"), 0.01)
         if action == "call":
@@ -532,19 +536,32 @@ def create_app() -> Flask:
         except (ProviderError, ValueError, TypeError) as exc:
             return jsonify({"error": str(exc)}), 400
 
+    @app.get("/api/numbers/pricing")
+    @require_auth
+    def number_pricing():
+        return jsonify({
+            "monthly": NUMBER_PRICE_MONTHLY,
+            "yearly": NUMBER_PRICE_YEARLY,
+            "yearly_monthly_equiv": round(NUMBER_PRICE_YEARLY / 12, 2),
+            "yearly_savings": round(NUMBER_PRICE_MONTHLY * 12 - NUMBER_PRICE_YEARLY, 2),
+        })
+
     @app.post("/api/numbers/purchase")
     @require_auth
     def purchase_number():
         body = payload()
         provider_id = str(body.get("provider", "mock")).lower()
         phone_number = str(body.get("phone_number", "")).strip()
+        plan = str(body.get("plan", "monthly")).lower()
+        if plan not in ("monthly", "yearly"):
+            plan = "monthly"
         if not phone_number:
             return jsonify({"error": "phone_number is required."}), 400
         non_voip_only = parse_bool(body.get("non_voip_only"), True)
 
         try:
             provider = provider_or_400(provider_id)
-            estimated_cost = estimate_action_cost(provider_id, "number_order")
+            estimated_cost = estimate_action_cost(provider_id, "number_order", plan=plan)
             current_user = _get_session_user()
             uid = current_user["id"] if current_user else None
             ensure_wallet_can_cover(estimated_cost, provider_id, user_id=uid)
@@ -558,27 +575,29 @@ def create_app() -> Flask:
                 provider_number_id=result.get("provider_number_id"),
                 line_type=line_type,
                 status="active",
-                metadata={"raw": result.get("raw", {})},
+                metadata={"plan": plan, "price": estimated_cost},
             )
             wallet_info = None
             if uid is not None and estimated_cost > 0:
                 try:
+                    period = "12 months" if plan == "yearly" else "1 month"
                     charged = storage.charge_wallet(
                         amount=estimated_cost,
                         tx_type="number_order",
                         provider=provider_id,
-                        description=f"Ordered number {record['phone_number']}",
+                        description=f"Number {record['phone_number']} — {plan} ({period})",
                         reference_id=str(record.get("provider_number_id") or ""),
                         user_id=uid,
                     )
                     wallet_info = charged
                 except ValueError:
-                    pass  # balance already checked above
+                    pass
             return jsonify(
                 {
                     "number": record,
                     "wallet": wallet_info,
                     "charged_usd": estimated_cost if uid else 0,
+                    "plan": plan,
                     "warnings": result.get("warnings", []),
                 }
             )
@@ -589,6 +608,46 @@ def create_app() -> Flask:
     @require_auth
     def order_number():
         return purchase_number()
+
+    @app.post("/api/numbers/<int:number_id>/renew")
+    @require_auth
+    def renew_number(number_id: int):
+        """Renew a number subscription (monthly or yearly)."""
+        number = storage.get_number(number_id)
+        if not number:
+            return jsonify({"error": f"Number {number_id} not found."}), 404
+        body = payload()
+        plan = str(body.get("plan", "monthly")).lower()
+        if plan not in ("monthly", "yearly"):
+            plan = "monthly"
+        cost = NUMBER_PRICE_YEARLY if plan == "yearly" else NUMBER_PRICE_MONTHLY
+        current_user = _get_session_user()
+        uid = current_user["id"] if current_user else None
+        try:
+            ensure_wallet_can_cover(cost, number.get("provider", ""), user_id=uid)
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
+        if uid is not None and cost > 0:
+            try:
+                period = "12 months" if plan == "yearly" else "1 month"
+                charged = storage.charge_wallet(
+                    amount=cost,
+                    tx_type="number_renewal",
+                    provider=number.get("provider", ""),
+                    description=f"Renew {number['phone_number']} — {plan} ({period})",
+                    reference_id=str(number.get("provider_number_id") or ""),
+                    user_id=uid,
+                )
+                return jsonify({
+                    "ok": True,
+                    "number": number,
+                    "wallet": charged,
+                    "charged_usd": cost,
+                    "plan": plan,
+                })
+            except ValueError as exc:
+                return jsonify({"error": str(exc)}), 400
+        return jsonify({"ok": True, "number": number, "charged_usd": 0, "plan": plan})
 
     @app.post("/api/numbers/<int:number_id>/release")
     @require_auth
