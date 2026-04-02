@@ -851,32 +851,37 @@ def create_app() -> Flask:
             uid = current_user["id"] if current_user else None
             ensure_wallet_can_cover(estimated_cost, provider_id, user_id=uid)
             result = provider.send_message(from_number, to_number, message)
-            safe_result = {"id": result.get("id"), "status": result.get("status")}
+            safe_result = {"id": str(result.get("id", "")), "status": str(result.get("status", "sent"))}
+            try:
+                raw = result.get("raw")
+                log_response = raw if isinstance(raw, dict) else {}
+            except Exception:
+                log_response = {}
             storage.log_message(
                 provider=provider_id,
                 direction="outbound",
                 from_number=from_number,
                 to_number=to_number,
                 body=message,
-                status=result.get("status", "queued"),
-                provider_message_id=result.get("id"),
+                status=safe_result["status"],
+                provider_message_id=safe_result["id"] or None,
                 event_type="outbound_message",
-                response=result.get("raw") if isinstance(result.get("raw"), dict) else {},
+                response=log_response,
             )
+            wallet_info = None
             if uid is not None and estimated_cost > 0:
                 try:
-                    charged = storage.charge_wallet(
+                    wallet_info = storage.charge_wallet(
                         amount=estimated_cost,
                         tx_type="sms",
                         provider=provider_id,
                         description=f"SMS {from_number} -> {to_number}",
-                        reference_id=str(result.get("id") or ""),
+                        reference_id=safe_result["id"],
                         user_id=uid,
                     )
-                    return jsonify({"message": safe_result, "wallet": charged, "charged_usd": estimated_cost})
                 except ValueError:
                     pass
-            return jsonify({"message": safe_result, "charged_usd": 0})
+            return jsonify({"message": safe_result, "charged_usd": estimated_cost if wallet_info else 0})
         except (ProviderError, ValueError) as exc:
             storage.log_message(
                 provider=provider_id,
