@@ -973,6 +973,17 @@
           </div>
         </div>
         <div class="settings-section">
+          <div class="settings-section-title">WebRTC Calling</div>
+          <div class="settings-row">
+            <div>
+              <div class="settings-row-label">Live Calling</div>
+              <div class="settings-row-sub">Make and receive live calls from your browser using WebRTC</div>
+              <div id="webrtc-status-text" style="font-size:12px;margin-top:4px;"></div>
+            </div>
+            <button class="btn-primary" id="setup-webrtc-btn" style="white-space:nowrap;padding:8px 16px;font-size:13px;">Setup WebRTC</button>
+          </div>
+        </div>
+        <div class="settings-section">
           <div class="settings-section-title">Provider Account Balances</div>
           <div id="provider-balances-rows"></div>
           <div class="settings-row">
@@ -2397,6 +2408,7 @@ async function loadSettings() {
   const base = window.location.origin;
   document.getElementById("wh-telnyx").textContent = `${base}/webhooks/telnyx/events`;
   renderProviderStatus();
+  checkWebRTCStatus();
 }
 
 function renderProviderStatus() {
@@ -2412,6 +2424,51 @@ function renderProviderStatus() {
         ${p.configured ? "Configured" : "Not configured"}
       </div>
     </div>`).join("");
+}
+
+// WebRTC setup button
+document.getElementById("setup-webrtc-btn").addEventListener("click", async () => {
+  const btn = document.getElementById("setup-webrtc-btn");
+  const statusEl = document.getElementById("webrtc-status-text");
+  btn.disabled = true; btn.textContent = "Setting up…";
+  try {
+    const d = await api("/api/webrtc/setup", { method: "POST" });
+    statusEl.style.color = "var(--green)";
+    statusEl.innerHTML = `Credential ID: <code style="font-size:11px;background:var(--surface2);padding:2px 6px;border-radius:4px;">${esc(d.credential_id)}</code><br>` +
+      `<span style="color:var(--muted);font-size:11px;">Save as TELNYX_CREDENTIAL_ID on Railway for persistence across redeploys.</span>`;
+    btn.textContent = "Configured";
+    toast("WebRTC calling enabled!");
+    // Re-init WebRTC
+    initWebRTC().catch(() => {});
+  } catch(e) {
+    statusEl.style.color = "var(--red)"; statusEl.textContent = e.message;
+    btn.textContent = "Setup WebRTC"; btn.disabled = false;
+  }
+});
+// Check WebRTC status on settings load
+async function checkWebRTCStatus() {
+  try {
+    const d = await api("/api/webrtc/status");
+    const statusEl = document.getElementById("webrtc-status-text");
+    const btn = document.getElementById("setup-webrtc-btn");
+    if (d.configured) {
+      statusEl.style.color = "var(--green)";
+      statusEl.textContent = "WebRTC calling is active.";
+      btn.textContent = "Configured";
+      btn.disabled = true;
+    } else if (!d.telnyx_configured) {
+      statusEl.style.color = "var(--muted)";
+      statusEl.textContent = "Telnyx API key not set.";
+      btn.disabled = true;
+    } else if (!d.connection_id) {
+      statusEl.style.color = "var(--yellow)";
+      statusEl.textContent = "Set TELNYX_CONNECTION_ID first.";
+      btn.disabled = true;
+    } else {
+      statusEl.style.color = "var(--muted)";
+      statusEl.textContent = "Not configured yet. Click to enable.";
+    }
+  } catch {}
 }
 
 document.getElementById("refresh-provider-bal-btn").addEventListener("click", async () => {

@@ -321,28 +321,78 @@ def create_app() -> Flask:
 
     # ── WebRTC calling ────────────────────────────────────────────────────
 
-    _telnyx_credential_id = os.environ.get("TELNYX_CREDENTIAL_ID", "").strip()
+    # Auto-created or set via env
+    _webrtc_credential = {"id": os.environ.get("TELNYX_CREDENTIAL_ID", "").strip()}
+
+    def _get_telnyx_headers() -> dict[str, str]:
+        tp = providers.get("telnyx")
+        return {"Authorization": f"Bearer {tp.api_key}", "Content-Type": "application/json"} if tp else {}
+
+    @app.post("/api/webrtc/setup")
+    @require_admin
+    def webrtc_setup():
+        """Auto-create a Telnyx Telephony Credential for WebRTC. Admin only."""
+        tp = providers.get("telnyx")
+        if not tp or not tp.is_configured():
+            return jsonify({"error": "Telnyx not configured. Set TELNYX_API_KEY."}), 503
+        if not tp.connection_id:
+            return jsonify({"error": "TELNYX_CONNECTION_ID not set. Required for WebRTC."}), 503
+        if _webrtc_credential["id"]:
+            return jsonify({"ok": True, "credential_id": _webrtc_credential["id"], "message": "Already configured."})
+        try:
+            resp = http_requests.post(
+                "https://api.telnyx.com/v2/telephony_credentials",
+                headers=_get_telnyx_headers(),
+                json={"connection_id": tp.connection_id, "name": "2ndCall-WebRTC"},
+                timeout=15,
+            )
+            if resp.status_code >= 400:
+                return jsonify({"error": f"Failed to create credential: {resp.text}"}), 502
+            data = resp.json().get("data", resp.json())
+            cred_id = data.get("id", "")
+            if not cred_id:
+                return jsonify({"error": "No credential ID returned.", "raw": data}), 502
+            _webrtc_credential["id"] = cred_id
+            return jsonify({
+                "ok": True,
+                "credential_id": cred_id,
+                "message": "WebRTC credential created! Save this as TELNYX_CREDENTIAL_ID env var for persistence.",
+            })
+        except Exception as exc:
+            return jsonify({"error": str(exc)}), 500
+
+    @app.get("/api/webrtc/status")
+    @require_auth
+    def webrtc_status():
+        tp = providers.get("telnyx")
+        return jsonify({
+            "configured": bool(_webrtc_credential["id"]),
+            "credential_id": _webrtc_credential["id"] or None,
+            "telnyx_configured": bool(tp and tp.is_configured()),
+            "connection_id": tp.connection_id if tp else None,
+        })
 
     @app.get("/api/webrtc/token")
     @require_auth
     def webrtc_token():
         """Generate a JWT token for Telnyx WebRTC client."""
-        telnyx_provider = providers.get("telnyx")
-        if not telnyx_provider or not telnyx_provider.is_configured():
+        tp = providers.get("telnyx")
+        if not tp or not tp.is_configured():
             return jsonify({"error": "Telnyx not configured."}), 503
-        if not _telnyx_credential_id:
-            return jsonify({"error": "TELNYX_CREDENTIAL_ID not set."}), 503
+        cred_id = _webrtc_credential["id"]
+        if not cred_id:
+            return jsonify({"error": "WebRTC not set up. Go to Settings and click 'Setup WebRTC Calling'."}), 503
         try:
             resp = http_requests.post(
-                f"https://api.telnyx.com/v2/telephony_credentials/{_telnyx_credential_id}/token",
-                headers={"Authorization": f"Bearer {telnyx_provider.api_key}", "Content-Type": "application/json"},
+                f"https://api.telnyx.com/v2/telephony_credentials/{cred_id}/token",
+                headers=_get_telnyx_headers(),
                 json={},
                 timeout=15,
             )
             if resp.status_code >= 400:
                 return jsonify({"error": f"Token generation failed: {resp.text}"}), 502
             token = resp.text.strip().strip('"')
-            return jsonify({"token": token, "credential_id": _telnyx_credential_id})
+            return jsonify({"token": token, "credential_id": cred_id})
         except Exception as exc:
             return jsonify({"error": str(exc)}), 500
 
