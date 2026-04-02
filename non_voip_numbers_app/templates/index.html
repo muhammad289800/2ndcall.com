@@ -1759,7 +1759,8 @@ document.getElementById("reply-input").addEventListener("input", function() {
 });
 
 // Thread call button
-document.getElementById("thread-call-btn").addEventListener("click", () => {
+document.getElementById("thread-call-btn").addEventListener("click", (e) => {
+  e.stopPropagation();
   if (S.activeContact) openDialpad(S.activeContact);
 });
 
@@ -1809,11 +1810,11 @@ function renderCalls() {
     </div>`;
   }).join("");
   list.querySelectorAll(".call-item").forEach(el => {
-    el.addEventListener("click", () => openDialpad(el.dataset.number));
+    el.addEventListener("click", (e) => { e.stopPropagation(); openDialpad(el.dataset.number); });
   });
 }
 
-document.getElementById("new-call-btn").addEventListener("click", () => openDialpad(""));
+document.getElementById("new-call-btn").addEventListener("click", (e) => { e.stopPropagation(); openDialpad(""); });
 
 // ════════════════════════════════════════════
 //  DIALPAD
@@ -2048,7 +2049,13 @@ function renderNumbers() {
     });
   });
   grid.querySelectorAll("[data-call-from]").forEach(btn => {
-    btn.addEventListener("click", () => openDialpad(""));
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      openDialpad("");
+      // Pre-select this number as the caller
+      const sel = document.getElementById("dp-from");
+      if (sel) sel.value = btn.dataset.callFrom;
+    });
   });
   grid.querySelectorAll("[data-renew-id]").forEach(btn => {
     btn.addEventListener("click", () => openRenewModal(btn.dataset.renewId, btn.dataset.renewNum));
