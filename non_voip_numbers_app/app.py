@@ -338,19 +338,36 @@ def create_app() -> Flask:
         if _webrtc_credential["id"]:
             return jsonify({"ok": True, "credential_id": _webrtc_credential["id"], "message": "Already configured."})
 
-        # Find a valid connection_id — try configured one first, then auto-discover
-        conn_id = tp.connection_id
+        # Telephony credentials require a credential_connection (not a Voice API app).
+        # Try to find an existing credential_connection, or create one.
+        conn_id = None
+        try:
+            r = http_requests.get("https://api.telnyx.com/v2/credential_connections", headers=_get_telnyx_headers(), timeout=15)
+            conns = r.json().get("data", []) if r.status_code < 400 else []
+            for c in conns:
+                if c.get("active", True):
+                    conn_id = c.get("id", "")
+                    break
+        except Exception:
+            pass
+
+        # If no credential_connection exists, create one
         if not conn_id:
-            # Try to find a credential_connection automatically
             try:
-                r = http_requests.get("https://api.telnyx.com/v2/credential_connections", headers=_get_telnyx_headers(), timeout=15)
-                conns = r.json().get("data", []) if r.status_code < 400 else []
-                if conns:
-                    conn_id = conns[0].get("id", "")
+                r = http_requests.post(
+                    "https://api.telnyx.com/v2/credential_connections",
+                    headers=_get_telnyx_headers(),
+                    json={"connection_name": "2ndCall-WebRTC", "active": True},
+                    timeout=15,
+                )
+                if r.status_code < 400:
+                    cdata = r.json().get("data", r.json())
+                    conn_id = cdata.get("id", "")
             except Exception:
                 pass
+
         if not conn_id:
-            return jsonify({"error": "No Telnyx connection found. Set TELNYX_CONNECTION_ID or create a Credential Connection in Telnyx."}), 503
+            return jsonify({"error": "Could not find or create a Credential Connection. Check your Telnyx account."}), 503
 
         try:
             resp = http_requests.post(
