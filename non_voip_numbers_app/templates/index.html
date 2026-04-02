@@ -2809,27 +2809,20 @@ let _pendingIncoming = null;
 
 async function initWebRTC() {
   // Load Telnyx WebRTC SDK dynamically
-  // Load the correct SDK bundle that exposes TelnyxRTC globally
+  // Load Telnyx WebRTC SDK from our static files
   if (typeof TelnyxRTC === "undefined") {
     try {
       await new Promise((resolve, reject) => {
         const s = document.createElement("script");
-        // Use the UMD bundle which exposes TelnyxRTC as a global
-        s.src = "https://unpkg.com/@telnyx/webrtc@2.10.3/lib/telnyxrtc.umd.js";
-        s.onload = resolve;
-        s.onerror = () => {
-          const s2 = document.createElement("script");
-          s2.src = "https://cdn.jsdelivr.net/npm/@telnyx/webrtc@2.10.3/lib/telnyxrtc.umd.js";
-          s2.onload = resolve; s2.onerror = reject;
-          document.head.appendChild(s2);
-        };
+        s.src = "/static/telnyx-webrtc.js";
+        s.onload = resolve; s.onerror = reject;
         document.head.appendChild(s);
       });
     } catch { console.warn("[WebRTC] Failed to load SDK"); return; }
   }
 
-  const RTC = (typeof TelnyxRTC !== "undefined") ? TelnyxRTC : null;
-  if (!RTC) { console.warn("[WebRTC] TelnyxRTC not found after loading UMD bundle"); return; }
+  const RTC = window.TelnyxRTC || (window.TelnyxWebRTC && window.TelnyxWebRTC.TelnyxRTC) || null;
+  if (!RTC) { console.warn("[WebRTC] TelnyxRTC not found"); return; }
 
   try {
     const d = await api("/api/webrtc/token");
