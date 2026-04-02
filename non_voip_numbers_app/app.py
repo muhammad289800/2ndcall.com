@@ -4,6 +4,7 @@ import uuid
 from pathlib import Path
 from typing import Any
 
+import requests as http_requests
 from flask import Flask, Response, jsonify, render_template, request, session
 
 from .payments import (
@@ -317,6 +318,33 @@ def create_app() -> Flask:
             providers=providers,
             pricing_rows=pricing_rows,
         )
+
+    # ── WebRTC calling ────────────────────────────────────────────────────
+
+    _telnyx_credential_id = os.environ.get("TELNYX_CREDENTIAL_ID", "").strip()
+
+    @app.get("/api/webrtc/token")
+    @require_auth
+    def webrtc_token():
+        """Generate a JWT token for Telnyx WebRTC client."""
+        telnyx_provider = providers.get("telnyx")
+        if not telnyx_provider or not telnyx_provider.is_configured():
+            return jsonify({"error": "Telnyx not configured."}), 503
+        if not _telnyx_credential_id:
+            return jsonify({"error": "TELNYX_CREDENTIAL_ID not set."}), 503
+        try:
+            resp = http_requests.post(
+                f"https://api.telnyx.com/v2/telephony_credentials/{_telnyx_credential_id}/token",
+                headers={"Authorization": f"Bearer {telnyx_provider.api_key}", "Content-Type": "application/json"},
+                json={},
+                timeout=15,
+            )
+            if resp.status_code >= 400:
+                return jsonify({"error": f"Token generation failed: {resp.text}"}), 502
+            token = resp.text.strip().strip('"')
+            return jsonify({"token": token, "credential_id": _telnyx_credential_id})
+        except Exception as exc:
+            return jsonify({"error": str(exc)}), 500
 
     @app.get("/sw.js")
     def service_worker():
@@ -869,6 +897,20 @@ def create_app() -> Flask:
         twiml = f"<Response><Say>{say_text}</Say></Response>"
         return Response(twiml, mimetype="text/xml")
 
+    # In-memory store for active incoming calls (for polling by browser)
+    _incoming_calls: list[dict[str, Any]] = []
+
+    @app.get("/api/calls/incoming")
+    @require_auth
+    def get_incoming_calls():
+        """Poll for incoming calls waiting to be answered."""
+        # Return and clear calls older than 60s
+        import time
+        now = time.time()
+        active = [c for c in _incoming_calls if now - c.get("_ts", 0) < 60]
+        _incoming_calls[:] = active
+        return jsonify({"calls": active})
+
     @app.post("/webhooks/telnyx/events")
     def telnyx_events_webhook():
         body = request.get_json(silent=True) or {}
@@ -897,7 +939,11 @@ def create_app() -> Flask:
         if "call" in event_type:
             from_number = str(payload_data.get("from", "")).strip()
             to_number = str(payload_data.get("to", "")).strip()
-            direction = "inbound" if "answered" in event_type or "initiated" in event_type else "outbound"
+            call_control_id = str(payload_data.get("call_control_id", "")).strip()
+            call_leg_id = str(payload_data.get("call_leg_id", "")).strip()
+            direction_raw = str(payload_data.get("direction", "")).strip()
+            direction = "inbound" if direction_raw == "incoming" or "initiated" in event_type else "outbound"
+
             storage.log_call(
                 provider="telnyx",
                 direction=direction,
@@ -905,10 +951,35 @@ def create_app() -> Flask:
                 to_number=to_number,
                 say_text="webhook",
                 status=event_type,
-                provider_call_id=str(payload_data.get("call_leg_id", "")) or None,
+                provider_call_id=call_leg_id or None,
                 event_type=event_type,
                 response=body,
             )
+
+            # Incoming call: answer it and make it available for WebRTC pickup
+            if event_type == "call.initiated" and direction_raw == "incoming" and call_control_id:
+                import time as _time
+                telnyx_provider = providers.get("telnyx")
+                if telnyx_provider and telnyx_provider.is_configured():
+                    # Answer the call via Call Control API
+                    try:
+                        http_requests.post(
+                            f"https://api.telnyx.com/v2/calls/{call_control_id}/actions/answer",
+                            headers={"Authorization": f"Bearer {telnyx_provider.api_key}", "Content-Type": "application/json"},
+                            json={"client_state": ""},
+                            timeout=10,
+                        )
+                    except Exception:
+                        pass
+
+                _incoming_calls.append({
+                    "call_control_id": call_control_id,
+                    "call_leg_id": call_leg_id,
+                    "from": from_number,
+                    "to": to_number,
+                    "event_type": event_type,
+                    "_ts": _time.time(),
+                })
 
         return jsonify({"received": True})
 
