@@ -1059,9 +1059,21 @@ def create_app() -> Flask:
         storage.record_webhook_event("telnyx", event_type, body)
 
         if "message" in event_type:
-            from_number = str(payload_data.get("from", {}).get("phone_number", "")).strip()
-            to_number = str(payload_data.get("to", [{}])[0].get("phone_number", "")).strip()
-            text = str(payload_data.get("text", "")).strip()
+            # Handle both nested and flat payload formats
+            from_field = payload_data.get("from", {})
+            to_field = payload_data.get("to", [{}])
+            if isinstance(from_field, dict):
+                from_number = str(from_field.get("phone_number", "")).strip()
+            else:
+                from_number = str(from_field).strip()
+            if isinstance(to_field, list) and to_field:
+                first_to = to_field[0]
+                to_number = str(first_to.get("phone_number", "") if isinstance(first_to, dict) else first_to).strip()
+            elif isinstance(to_field, dict):
+                to_number = str(to_field.get("phone_number", "")).strip()
+            else:
+                to_number = str(to_field).strip()
+            text = str(payload_data.get("text", payload_data.get("body", ""))).strip()
             direction = "inbound" if "received" in event_type or "inbound" in event_type else "outbound"
             storage.log_message(
                 provider="telnyx",
