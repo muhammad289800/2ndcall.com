@@ -1226,6 +1226,26 @@ def create_app() -> Flask:
             }
         )
 
+    @app.get("/api/debug/webhooks")
+    @require_admin
+    def debug_webhooks():
+        """View recent webhook events for debugging."""
+        with storage._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM provider_webhook_events ORDER BY created_at DESC LIMIT 30"
+            ).fetchall()
+        events = []
+        for r in rows:
+            d = dict(r)
+            try:
+                import json as _json
+                d["payload"] = _json.loads(d.get("payload_json", "{}"))
+            except Exception:
+                d["payload"] = d.get("payload_json", "")
+            d.pop("payload_json", None)
+            events.append(d)
+        return jsonify({"events": events, "active_calls": list(_active_calls.values()), "incoming_calls": _incoming_calls})
+
     def _try_auto_verify_order(order: dict[str, Any], store: Storage) -> bool:
         """Scan blockchain for transactions matching a pending order."""
         from .payments import WALLET_TRC20, _iso_to_ms

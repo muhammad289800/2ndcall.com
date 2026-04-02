@@ -596,8 +596,6 @@ class TelnyxProvider(BaseProvider):
         }
         if self.call_webhook_url:
             call_payload["webhook_url"] = self.call_webhook_url
-        if say_text:
-            call_payload["answering_machine_detection"] = "disabled"
         payload = self._request("POST", "/calls", json_payload=call_payload)
         data = payload.get("data", {})
         return {
