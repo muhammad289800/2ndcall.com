@@ -1892,26 +1892,18 @@ document.getElementById("dp-call-btn").addEventListener("click", async () => {
   if (!from) { setStatus("dp-status","No number to call from. Get a number first.", true); return; }
   // Try to init WebRTC if not ready
   if (!_rtcClient) {
-    setStatus("dp-status","Connecting WebRTC…");
+    setStatus("dp-status","Connecting…");
     try { await initWebRTC(); } catch(e) { setStatus("dp-status","Init error: " + e.message, true); return; }
-    if (!_rtcClient) {
-      await new Promise(r => setTimeout(r, 2000));
+    // Wait for connection with timeout
+    if (_rtcClient) {
+      await new Promise(r => setTimeout(r, 3000));
     }
   }
   if (_rtcClient) {
     closeModal("modal-dialpad");
     makeWebRTCCall(from, dialpadNum);
   } else {
-    // Show diagnostic info
-    const dbg = [];
-    dbg.push("SDK loaded: " + (document.querySelector('script[src*="telnyx"]') ? "yes" : "no"));
-    dbg.push("TelnyxRTC: " + (typeof TelnyxRTC));
-    dbg.push("window.TelnyxWebRTC: " + (typeof window.TelnyxWebRTC));
-    dbg.push("window.Telnyx: " + (typeof window.Telnyx));
-    const allGlobals = Object.keys(window).filter(k => k.toLowerCase().includes("telnyx")).join(", ");
-    dbg.push("globals: " + (allGlobals || "none"));
-    if (window.TelnyxWebRTC) dbg.push("keys: " + Object.keys(window.TelnyxWebRTC).slice(0,10).join(","));
-    setStatus("dp-status", dbg.join(" | "), true);
+    setStatus("dp-status","WebRTC could not connect. Check Settings > WebRTC Calling.", true);
   }
 });
 
@@ -2826,17 +2818,26 @@ async function initWebRTC() {
 
   try {
     const d = await api("/api/webrtc/token");
-    if (!d.token) { console.warn("[WebRTC] No token returned"); return; }
+    if (!d.token) { toast("WebRTC: No token returned", "error"); return; }
     _rtcClient = new RTC({ login_token: d.token });
     _rtcClient.on("telnyx.ready", () => {
       console.log("[WebRTC] Ready");
       toast("Live calling ready", "success");
     });
-    _rtcClient.on("telnyx.error", (e) => console.warn("[WebRTC] Error:", e));
+    _rtcClient.on("telnyx.error", (e) => {
+      console.warn("[WebRTC] Error:", e);
+      toast("WebRTC error: " + (e?.message || JSON.stringify(e)), "error");
+    });
+    _rtcClient.on("telnyx.socket.error", (e) => {
+      console.warn("[WebRTC] Socket error:", e);
+    });
     _rtcClient.on("telnyx.notification", handleRTCNotification);
     _rtcClient.connect();
     startIncomingPoll();
-  } catch(e) { console.warn("[WebRTC] Init failed:", e.message); }
+  } catch(e) {
+    toast("WebRTC init failed: " + e.message, "error");
+    _rtcClient = null;
+  }
 }
 
 function handleRTCNotification(notification) {
