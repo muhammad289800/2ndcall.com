@@ -6,9 +6,14 @@ from typing import Any
 
 from flask import Flask, Response, jsonify, render_template, request, session
 
-from .payments import create_payment_order as bitget_create_order
-from .payments import is_configured as bitget_configured
-from .payments import verify_webhook as bitget_verify_webhook
+from .payments import (
+    get_supported_networks,
+    get_wallet_address,
+    is_configured as crypto_configured,
+    match_payment_to_orders,
+    scan_trc20_transactions,
+    verify_trc20_tx,
+)
 from .providers import ProviderError, build_providers
 from .storage import Storage
 
@@ -368,7 +373,8 @@ def create_app() -> Flask:
                 "balance": storage.get_wallet_balance(user_id=uid),
                 "transactions": storage.list_wallet_transactions(limit=limit, user_id=uid),
                 "payment_orders": storage.list_payment_orders(user_id=uid, limit=20),
-                "bitget_configured": bitget_configured(),
+                "crypto_configured": crypto_configured(),
+                "networks": get_supported_networks() if crypto_configured() else [],
             }
         )
 
@@ -396,56 +402,110 @@ def create_app() -> Flask:
     @app.post("/api/wallet/create-order")
     @require_auth
     def wallet_create_order():
-        """Create a Bitget Pay order so the user can top up their wallet."""
+        """Create a crypto payment order for wallet top-up."""
         u = _get_session_user()
         body = payload()
         amount = parse_float(body.get("amount"), 0.0)
+        network = str(body.get("network", "TRC20")).upper()
         if amount < 1.0:
             return jsonify({"error": "Minimum top-up is $1.00 USD."}), 400
-        if not bitget_configured():
-            return jsonify({"error": "Bitget Pay is not configured. Set BITGET_APP_ID and BITGET_API_SECRET."}), 503
+        if not crypto_configured():
+            return jsonify({"error": "Crypto payments not configured. Set CRYPTO_WALLET_TRC20."}), 503
 
-        order_id = f"2C-{uuid.uuid4().hex[:16].upper()}"
-        base_url = request.host_url.rstrip("/")
-        notify_url = f"{base_url}/webhooks/bitget/payment"
+        wallet_address = get_wallet_address(network)
+        if not wallet_address:
+            return jsonify({"error": f"Network {network} is not configured."}), 400
 
-        try:
-            data = bitget_create_order(
-                merchant_order_id=order_id,
-                amount_usd=amount,
-                notify_url=notify_url,
-                redirect_url=f"{base_url}/?payment={order_id}",
-            )
-        except Exception as exc:
-            return jsonify({"error": str(exc)}), 400
-
-        deeplink = data.get("deeplink", "")
-        paydify_txn_id = data.get("txnId", "")
-
+        order_id = f"2C-{uuid.uuid4().hex[:12].upper()}"
         order = storage.create_payment_order(
             order_id=order_id,
             amount_usd=amount,
-            currency=data.get("currency", "USDT"),
-            deeplink=deeplink,
-            paydify_txn_id=paydify_txn_id,
+            currency="USDT",
+            deeplink="",
+            paydify_txn_id="",
             user_id=u["id"] if u else None,
         )
-        return jsonify({"ok": True, "order": order, "deeplink": deeplink, "paydify_txn_id": paydify_txn_id})
+        return jsonify({
+            "ok": True,
+            "order": order,
+            "wallet_address": wallet_address,
+            "network": network,
+            "amount": amount,
+            "token": "USDT",
+        })
 
     @app.get("/api/wallet/order/<order_id>")
     @require_auth
     def wallet_order_status(order_id: str):
-        """Poll the status of a payment order."""
+        """Poll the status of a payment order. Also triggers blockchain scan."""
         order = storage.get_payment_order(order_id)
         if not order:
             return jsonify({"error": "Order not found."}), 404
         u = _get_session_user()
         if u and order.get("user_id") and order["user_id"] != u["id"] and not _is_admin():
             return jsonify({"error": "Not your order."}), 403
+
+        # If still pending, try to scan blockchain for matching transaction
+        if order["status"] == "pending":
+            _try_auto_verify_order(order, storage)
+            order = storage.get_payment_order(order_id) or order
+
         uid = order.get("user_id")
         return jsonify({
             "order": order,
             "wallet_balance": storage.get_wallet_balance(user_id=uid),
+        })
+
+    @app.post("/api/wallet/verify-tx")
+    @require_auth
+    def wallet_verify_tx():
+        """User submits a tx hash for manual verification."""
+        body = payload()
+        order_id = str(body.get("order_id", "")).strip()
+        tx_hash = str(body.get("tx_hash", "")).strip()
+        if not order_id or not tx_hash:
+            return jsonify({"error": "order_id and tx_hash are required."}), 400
+
+        order = storage.get_payment_order(order_id)
+        if not order:
+            return jsonify({"error": "Order not found."}), 404
+        if order["status"] == "paid":
+            return jsonify({"ok": True, "order": order, "message": "Already paid."})
+
+        u = _get_session_user()
+        if u and order.get("user_id") and order["user_id"] != u["id"] and not _is_admin():
+            return jsonify({"error": "Not your order."}), 403
+
+        # Verify on blockchain
+        tx_info = verify_trc20_tx(tx_hash)
+        if not tx_info:
+            return jsonify({"error": "Transaction not found on blockchain. It may still be confirming — try again in a minute."}), 404
+
+        expected_address = get_wallet_address("TRC20") or ""
+        order_amount = float(order.get("amount_usd", 0))
+        tx_amount = tx_info.get("amount", 0)
+
+        # Validate: amount should be close enough (within $0.50 tolerance for rounding)
+        if tx_amount < order_amount - 0.50:
+            return jsonify({
+                "error": f"Transaction amount ${tx_amount:.2f} is less than order amount ${order_amount:.2f}."
+            }), 400
+
+        # Mark as paid
+        storage.mark_payment_order_paid(
+            order_id=order_id,
+            paydify_txn_id="",
+            tx_hash=tx_hash,
+            from_address=tx_info.get("from_address", ""),
+            paid_amount=tx_amount,
+        )
+        updated = storage.get_payment_order(order_id)
+        uid = order.get("user_id")
+        return jsonify({
+            "ok": True,
+            "order": updated,
+            "wallet_balance": storage.get_wallet_balance(user_id=uid),
+            "message": f"Payment verified! ${tx_amount:.2f} credited.",
         })
 
     @app.get("/api/numbers")
@@ -847,45 +907,62 @@ def create_app() -> Flask:
             }
         )
 
-    @app.post("/webhooks/bitget/payment")
-    def bitget_payment_webhook():
-        """Paydify (Bitget Pay) payment confirmation webhook."""
-        raw_body = request.get_data(as_text=True)
-        req_headers = {k.lower(): v for k, v in request.headers.items()}
+    def _try_auto_verify_order(order: dict[str, Any], store: Storage) -> bool:
+        """Scan blockchain for transactions matching a pending order."""
+        from .payments import WALLET_TRC20, _iso_to_ms
+        if not WALLET_TRC20 or order["status"] != "pending":
+            return False
 
-        if not bitget_verify_webhook(req_headers, raw_body, "/webhooks/bitget/payment"):
-            return "fail", 400
+        order_created_ms = _iso_to_ms(order.get("created_at", ""))
+        # Scan from 1 minute before order creation
+        min_ts = max(0, order_created_ms - 60000)
+        txns = scan_trc20_transactions(WALLET_TRC20, min_timestamp_ms=min_ts, limit=20)
+        if not txns:
+            return False
 
-        try:
-            body = request.get_json(force=True) or {}
-        except Exception:
-            return "fail", 400
+        matches = match_payment_to_orders(txns, [order], WALLET_TRC20)
+        if not matches:
+            return False
 
-        merchant_order_id = str(body.get("mchTxnId", "")).strip()
-        paydify_txn_id = str(body.get("txnId", "")).strip()
-        state = str(body.get("state", "")).strip().lower()
-        tx_hash = str(body.get("txnHash", "")).strip()
-        from_address = str(body.get("fromAddress", "")).strip()
+        tx, matched_order = matches[0]
+        store.mark_payment_order_paid(
+            order_id=matched_order["order_id"],
+            paydify_txn_id="",
+            tx_hash=tx["tx_hash"],
+            from_address=tx.get("from_address", ""),
+            paid_amount=tx["amount"],
+        )
+        return True
 
-        try:
-            paid_amount = float(body.get("mchReceivedAmount") or body.get("txnAmount") or 0)
-        except (TypeError, ValueError):
-            paid_amount = 0.0
+    @app.get("/api/wallet/scan")
+    @require_admin
+    def wallet_scan_blockchain():
+        """Admin: manually trigger blockchain scan for all pending orders."""
+        from .payments import WALLET_TRC20
+        if not WALLET_TRC20:
+            return jsonify({"error": "No TRC20 wallet configured."}), 503
 
-        storage.record_webhook_event("bitget", f"payment.{state}", body)
+        pending = [o for o in storage.list_payment_orders(limit=50) if o["status"] == "pending"]
+        if not pending:
+            return jsonify({"scanned": 0, "matched": 0, "message": "No pending orders."})
 
-        if state == "paid" and merchant_order_id:
+        txns = scan_trc20_transactions(WALLET_TRC20, limit=50)
+        matches = match_payment_to_orders(txns, pending, WALLET_TRC20)
+
+        for tx, order in matches:
             storage.mark_payment_order_paid(
-                order_id=merchant_order_id,
-                paydify_txn_id=paydify_txn_id,
-                tx_hash=tx_hash,
-                from_address=from_address,
-                paid_amount=paid_amount if paid_amount > 0 else None,
+                order_id=order["order_id"],
+                paydify_txn_id="",
+                tx_hash=tx["tx_hash"],
+                from_address=tx.get("from_address", ""),
+                paid_amount=tx["amount"],
             )
-        elif state in ("failed", "expired") and merchant_order_id:
-            storage.mark_payment_order_failed(merchant_order_id)
 
-        return "success", 200
+        return jsonify({
+            "scanned": len(txns),
+            "pending_orders": len(pending),
+            "matched": len(matches),
+        })
 
     return app
 

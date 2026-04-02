@@ -1136,19 +1136,19 @@
     </div>
   </div>
 </div>
-<!-- Bitget / Add Funds Checkout Modal -->
+<!-- Crypto Add Funds Checkout Modal -->
 <div class="modal-overlay hidden" id="modal-topup">
-  <div class="modal" style="max-width:460px;">
+  <div class="modal" style="max-width:480px;">
     <div class="modal-header">
       <h3 id="topup-modal-title">Add Funds</h3>
-      <button class="modal-close" data-close="modal-topup">✕</button>
+      <button class="modal-close" data-close="modal-topup">&#10005;</button>
     </div>
     <div class="modal-body">
 
-      <!-- Step 1: Choose amount -->
+      <!-- Step 1: Choose amount + network -->
       <div id="topup-step-choose">
         <p style="color:var(--muted);font-size:13px;margin-bottom:16px;">
-          Pay with crypto via Bitget Wallet. Funds are credited instantly after confirmation.
+          Send USDT to our wallet address. Your balance is credited automatically once confirmed on-chain.
         </p>
         <div class="quick-amounts" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;">
           <button class="btn-amount" data-amt="5">$5</button>
@@ -1159,34 +1159,55 @@
         </div>
         <div class="form-field">
           <label class="form-label">Custom amount (USD)</label>
-          <input class="form-input" type="number" id="topup-amount-input" min="1" step="1" placeholder="Enter amount" style="margin-bottom:0;" />
+          <input class="form-input" type="number" id="topup-amount-input" min="1" step="0.01" placeholder="Enter amount" style="margin-bottom:0;" />
+        </div>
+        <div class="form-field" style="margin-top:12px;">
+          <label class="form-label">Network</label>
+          <select class="form-input" id="topup-network" style="margin-bottom:0;"></select>
         </div>
         <button class="btn-primary" id="topup-proceed-btn" style="width:100%;margin-top:14px;">
-          Continue to Bitget Pay
+          Continue to Payment
         </button>
         <div class="status-line" id="topup-choose-status" style="text-align:center;margin-top:8px;"></div>
       </div>
 
-      <!-- Step 2: Checkout — show deeplink + status -->
+      <!-- Step 2: Checkout — show address + QR + status -->
       <div id="topup-step-checkout" style="display:none;text-align:center;">
-        <div style="margin-bottom:16px;">
-          <div style="font-size:13px;color:var(--muted);margin-bottom:6px;">You are paying</div>
-          <div id="checkout-amount-display" style="font-size:32px;font-weight:900;color:var(--accent-h);"></div>
-          <div style="font-size:12px;color:var(--muted);margin-top:2px;">in USDT via Bitget Wallet</div>
+        <div style="margin-bottom:14px;">
+          <div style="font-size:13px;color:var(--muted);margin-bottom:4px;">Send exactly</div>
+          <div id="checkout-amount-display" style="font-size:36px;font-weight:900;color:var(--accent-h);"></div>
+          <div id="checkout-network-label" style="font-size:12px;color:var(--muted);margin-top:2px;"></div>
         </div>
 
-        <!-- Bitget Pay button -->
-        <a id="checkout-pay-link" href="#" target="_blank" rel="noopener"
-           style="display:flex;align-items:center;justify-content:center;gap:10px;
-                  background:#00c48f;color:white;font-weight:700;font-size:16px;padding:14px 24px;
-                  border-radius:12px;text-decoration:none;margin-bottom:16px;transition:opacity .15s;"
-           onmouseover="this.style.opacity='.85'" onmouseout="this.style.opacity='1'">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14H9V8h2v8zm4 0h-2V8h2v8z"/></svg>
-          Pay with Bitget Wallet
-        </a>
+        <!-- QR Code -->
+        <div style="margin-bottom:14px;">
+          <img id="checkout-qr" alt="QR" style="width:180px;height:180px;border-radius:12px;background:white;padding:8px;margin:0 auto;display:block;" />
+        </div>
 
-        <div style="font-size:12px;color:var(--muted);margin-bottom:18px;">
-          Opens Bitget Wallet app. Complete payment there and return here.
+        <!-- Wallet address -->
+        <div style="margin-bottom:14px;">
+          <div style="font-size:11px;color:var(--muted);margin-bottom:4px;text-transform:uppercase;font-weight:700;letter-spacing:.5px;">Wallet Address</div>
+          <div style="display:flex;align-items:center;gap:8px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:10px 14px;">
+            <code id="checkout-address" style="flex:1;font-size:12px;word-break:break-all;color:var(--text);font-family:'SF Mono',SFMono-Regular,Consolas,monospace;"></code>
+            <button class="copy-btn" id="copy-address-btn" style="flex-shrink:0;">Copy</button>
+          </div>
+        </div>
+
+        <!-- Important warnings -->
+        <div style="background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.15);border-radius:10px;padding:10px 14px;margin-bottom:14px;text-align:left;">
+          <div style="font-size:12px;color:var(--yellow);font-weight:600;margin-bottom:4px;">Important</div>
+          <div style="font-size:11px;color:var(--muted);line-height:1.5;">
+            Send only <strong style="color:var(--text);">USDT</strong> on the <strong id="checkout-net-warn" style="color:var(--text);"></strong> network. Sending other tokens or using the wrong network will result in loss of funds.
+          </div>
+        </div>
+
+        <!-- Manual TX hash entry -->
+        <div style="text-align:left;margin-bottom:14px;">
+          <label class="form-label">Transaction hash (optional — speeds up verification)</label>
+          <div style="display:flex;gap:8px;">
+            <input class="form-input" id="checkout-tx-hash" placeholder="Paste your tx hash here…" style="margin-bottom:0;flex:1;font-size:12px;" />
+            <button class="btn-primary" id="checkout-verify-btn" style="white-space:nowrap;padding:10px 16px;font-size:13px;">Verify</button>
+          </div>
         </div>
 
         <!-- Status area -->
@@ -1194,16 +1215,16 @@
           <div style="display:flex;align-items:center;justify-content:center;gap:8px;padding:12px;
                       background:var(--surface2);border-radius:10px;border:1px solid var(--border);">
             <div class="spinner" id="checkout-spinner"></div>
-            <div id="checkout-status-text" style="font-size:13px;color:var(--muted);">Waiting for payment confirmation…</div>
+            <div id="checkout-status-text" style="font-size:13px;color:var(--muted);">Scanning blockchain for your payment…</div>
           </div>
-          <div id="checkout-order-id" style="font-size:11px;color:var(--muted);margin-top:8px;"></div>
+          <div id="checkout-order-id" style="font-size:11px;color:var(--muted2);margin-top:8px;"></div>
         </div>
 
-        <!-- Success state (hidden initially) -->
+        <!-- Success state -->
         <div id="checkout-success" style="display:none;">
-          <div style="font-size:48px;margin-bottom:10px;">✅</div>
-          <div style="font-size:18px;font-weight:700;color:var(--green);margin-bottom:6px;">Payment Confirmed!</div>
-          <div id="checkout-success-msg" style="font-size:13px;color:var(--muted);margin-bottom:16px;"></div>
+          <div style="font-size:52px;margin-bottom:12px;">&#9989;</div>
+          <div style="font-size:20px;font-weight:800;color:var(--green);margin-bottom:8px;">Payment Confirmed!</div>
+          <div id="checkout-success-msg" style="font-size:14px;color:var(--muted);margin-bottom:18px;"></div>
           <button class="btn-primary" onclick="closeModal('modal-topup');loadWallet();" style="width:100%;">Done</button>
         </div>
       </div>
@@ -2013,7 +2034,7 @@ function renderGetNumberResults() {
 // ════════════════════════════════════════════
 async function loadWallet() {
   const d = await api("/api/wallet");
-  S.wallet = d || { balance: 0, transactions: [], payment_orders: [] };
+  S.wallet = d || { balance: 0, transactions: [], payment_orders: [], networks: [] };
   renderWallet();
 }
 
@@ -2063,15 +2084,26 @@ function renderWallet() {
 }
 
 // ── Checkout / Add Funds ──────────────────────────────────────────────
-document.getElementById("open-topup-btn").addEventListener("click", () => {
-  openTopupModal();
-});
+let _checkoutNetworks = [];
+let _checkoutOrderId = null;
+document.getElementById("open-topup-btn").addEventListener("click", () => openTopupModal());
+
 function openTopupModal() {
   document.getElementById("topup-step-choose").style.display = "";
   document.getElementById("topup-step-checkout").style.display = "none";
   document.getElementById("topup-choose-status").textContent = "";
   document.getElementById("topup-amount-input").value = "";
   document.querySelectorAll(".btn-amount").forEach(b => b.classList.remove("active"));
+  // Populate network selector from wallet data
+  _checkoutNetworks = S.wallet.networks || [];
+  const netSel = document.getElementById("topup-network");
+  if (_checkoutNetworks.length) {
+    netSel.innerHTML = _checkoutNetworks.map(n =>
+      `<option value="${esc(n.id)}">${esc(n.name)} — ${esc(n.token)} (fee: ${esc(n.fee_est)})</option>`
+    ).join("");
+  } else {
+    netSel.innerHTML = '<option value="">No networks configured</option>';
+  }
   document.getElementById("modal-topup").classList.remove("hidden");
 }
 // Quick amount buttons
@@ -2084,33 +2116,40 @@ document.querySelectorAll(".btn-amount").forEach(btn => {
 });
 document.getElementById("topup-proceed-btn").addEventListener("click", async () => {
   const amount = parseFloat(document.getElementById("topup-amount-input").value || 0);
+  const network = document.getElementById("topup-network").value;
   const statusEl = document.getElementById("topup-choose-status");
   if (!amount || amount < 1) {
     statusEl.style.color = "var(--red)"; statusEl.textContent = "Minimum amount is $1.00"; return;
+  }
+  if (!network) {
+    statusEl.style.color = "var(--red)"; statusEl.textContent = "No payment network available."; return;
   }
   statusEl.style.color = "var(--muted)"; statusEl.textContent = "Creating order…";
   document.getElementById("topup-proceed-btn").disabled = true;
   try {
     const d = await api("/api/wallet/create-order", {
-      method: "POST", body: JSON.stringify({ amount })
+      method: "POST", body: JSON.stringify({ amount, network })
     });
     const order = d.order;
-    const deeplink = d.deeplink;
+    const walletAddr = d.wallet_address;
+    _checkoutOrderId = order.order_id;
+
     // Show checkout step
     document.getElementById("topup-step-choose").style.display = "none";
     document.getElementById("topup-step-checkout").style.display = "";
-    document.getElementById("checkout-amount-display").textContent = `$${amount.toFixed(2)}`;
+    document.getElementById("checkout-amount-display").textContent = `$${amount.toFixed(2)} USDT`;
+    document.getElementById("checkout-network-label").textContent = `on ${network} network`;
+    document.getElementById("checkout-address").textContent = walletAddr;
+    document.getElementById("checkout-net-warn").textContent = network;
     document.getElementById("checkout-order-id").textContent = `Order: ${order.order_id}`;
     document.getElementById("checkout-status-area").style.display = "";
     document.getElementById("checkout-success").style.display = "none";
-    document.getElementById("checkout-status-text").textContent = "Waiting for payment confirmation…";
-    // Set Bitget Pay deeplink
-    const bgLink = deeplink ? `https://bkcode.vip/?deep_link_value=${encodeURIComponent(deeplink)}` : "#";
-    document.getElementById("checkout-pay-link").href = bgLink;
-    if (!deeplink) {
-      document.getElementById("checkout-pay-link").style.display = "none";
-      document.getElementById("checkout-status-text").textContent = "No deeplink returned — contact support.";
-    }
+    document.getElementById("checkout-tx-hash").value = "";
+    document.getElementById("checkout-status-text").textContent = "Scanning blockchain for your payment…";
+    document.getElementById("checkout-spinner").style.display = "";
+    // QR code via free API
+    document.getElementById("checkout-qr").src =
+      `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(walletAddr)}&bgcolor=ffffff&color=000000`;
     // Start polling
     startOrderPolling(order.order_id, amount);
   } catch(e) {
@@ -2120,40 +2159,73 @@ document.getElementById("topup-proceed-btn").addEventListener("click", async () 
   }
 });
 
+// Copy address button
+document.getElementById("copy-address-btn").addEventListener("click", () => {
+  const addr = document.getElementById("checkout-address").textContent;
+  navigator.clipboard.writeText(addr).then(() => {
+    const btn = document.getElementById("copy-address-btn");
+    btn.textContent = "Copied!";
+    setTimeout(() => btn.textContent = "Copy", 1500);
+  });
+});
+
+// Manual verify button
+document.getElementById("checkout-verify-btn").addEventListener("click", async () => {
+  const txHash = document.getElementById("checkout-tx-hash").value.trim();
+  if (!txHash) { toast("Please paste a transaction hash", "error"); return; }
+  if (!_checkoutOrderId) return;
+  const btn = document.getElementById("checkout-verify-btn");
+  btn.textContent = "Verifying…"; btn.disabled = true;
+  try {
+    const d = await api("/api/wallet/verify-tx", {
+      method: "POST", body: JSON.stringify({ order_id: _checkoutOrderId, tx_hash: txHash })
+    });
+    showCheckoutSuccess(d.order, d.wallet_balance);
+  } catch(e) {
+    toast(e.message, "error");
+  } finally {
+    btn.textContent = "Verify"; btn.disabled = false;
+  }
+});
+
 let _orderPollTimer = null;
 function startOrderPolling(orderId, amount) {
   if (_orderPollTimer) clearInterval(_orderPollTimer);
   let ticks = 0;
   _orderPollTimer = setInterval(async () => {
     ticks++;
-    if (ticks > 120) { clearInterval(_orderPollTimer); return; } // stop after ~10min
-    try {
-      await pollOrder(orderId, amount);
-    } catch {}
+    if (ticks > 360) { // stop after 30 min
+      clearInterval(_orderPollTimer);
+      document.getElementById("checkout-status-text").textContent = "Timed out. Paste your tx hash above to verify manually.";
+      document.getElementById("checkout-spinner").style.display = "none";
+      return;
+    }
+    try { await pollOrder(orderId, amount); } catch {}
   }, 5000);
 }
+
 async function pollOrder(orderId, amount) {
   const d = await api(`/api/wallet/order/${orderId}`);
   const order = d.order;
   if (order.status === "paid") {
-    if (_orderPollTimer) { clearInterval(_orderPollTimer); _orderPollTimer = null; }
-    const credited = Number(order.amount_usd || amount || 0);
-    document.getElementById("checkout-status-area").style.display = "none";
-    document.getElementById("checkout-success").style.display = "";
-    document.getElementById("checkout-success-msg").textContent =
-      `$${credited.toFixed(2)} has been added to your wallet!`;
-    await loadWallet();
-    toast(`✓ $${credited.toFixed(2)} credited to your wallet!`, "success");
-    S.wallet.payment_orders = (S.wallet.payment_orders || []).map(o =>
-      o.order_id === orderId ? order : o
-    );
-    renderWallet();
+    showCheckoutSuccess(order, d.wallet_balance);
   } else if (order.status === "failed") {
     if (_orderPollTimer) { clearInterval(_orderPollTimer); _orderPollTimer = null; }
     document.getElementById("checkout-status-text").textContent = "Payment failed or expired.";
     document.getElementById("checkout-spinner").style.display = "none";
   }
   return order;
+}
+
+function showCheckoutSuccess(order, walletBalance) {
+  if (_orderPollTimer) { clearInterval(_orderPollTimer); _orderPollTimer = null; }
+  const credited = Number(order.amount_usd || 0);
+  document.getElementById("checkout-status-area").style.display = "none";
+  document.getElementById("checkout-success").style.display = "";
+  document.getElementById("checkout-success-msg").textContent =
+    `$${credited.toFixed(2)} has been added to your wallet!`;
+  loadWallet();
+  toast(`$${credited.toFixed(2)} credited to your wallet!`, "success");
 }
 
 // ════════════════════════════════════════════
