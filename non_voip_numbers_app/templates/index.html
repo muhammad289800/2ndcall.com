@@ -1101,6 +1101,13 @@
       <button class="modal-close" data-close="modal-get-number">✕</button>
     </div>
     <div class="modal-body">
+      <div class="form-field" style="margin-bottom:14px;">
+        <label class="form-label">Provider</label>
+        <select class="form-input" id="gn-provider" style="margin-bottom:0;">
+          <option value="signalwire">SignalWire — No setup fee, $0.50/mo cost</option>
+          <option value="telnyx">Telnyx — WebRTC calling, $1.00/mo cost</option>
+        </select>
+      </div>
       <div class="form-grid" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:14px;">
         <div class="form-field">
           <label class="form-label">Country</label>
@@ -2192,8 +2199,9 @@ document.getElementById("gn-search-btn").addEventListener("click", async () => {
   setStatus("gn-status", "Searching…");
   document.getElementById("gn-results").innerHTML = "";
   try {
+    const selectedProvider = document.getElementById("gn-provider").value;
     const d = await api("/api/numbers/search", { method: "POST", body: JSON.stringify({
-      provider: "telnyx",
+      provider: selectedProvider,
       country: document.getElementById("gn-country").value || "US",
       area_code: document.getElementById("gn-area").value || "",
       limit: Number(document.getElementById("gn-limit").value || 10),
@@ -2246,7 +2254,7 @@ function renderGetNumberResults() {
       btn.textContent = "Ordering…"; btn.disabled = true;
       try {
         const result = await api("/api/numbers/order", { method: "POST", body: JSON.stringify({
-          provider: "telnyx", phone_number: num, plan: plan,
+          provider: document.getElementById("gn-provider").value, phone_number: num, plan: plan,
           non_voip_only: document.getElementById("gn-nonvoip").value === "true"
         })});
 

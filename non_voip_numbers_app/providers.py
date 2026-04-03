@@ -638,9 +638,187 @@ class TelnyxProvider(BaseProvider):
         }
 
 
+class SignalWireProvider(BaseProvider):
+    provider_id = "signalwire"
+    label = "SignalWire"
+
+    def __init__(self) -> None:
+        self.space_url = os.environ.get("SIGNALWIRE_SPACE_URL", "").strip()
+        self.project_id = os.environ.get("SIGNALWIRE_PROJECT_ID", "").strip()
+        self.api_token = os.environ.get("SIGNALWIRE_API_TOKEN", "").strip()
+
+    def is_configured(self) -> bool:
+        return bool(self.space_url and self.project_id and self.api_token)
+
+    @property
+    def base_url(self) -> str:
+        return f"https://{self.space_url}/api/laml/2010-04-01"
+
+    def _request(
+        self,
+        method: str,
+        path: str,
+        params: dict[str, Any] | None = None,
+        data: dict[str, Any] | None = None,
+        json_payload: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        if not self.is_configured():
+            raise ProviderError("SignalWire is not configured. Set SIGNALWIRE_SPACE_URL, SIGNALWIRE_PROJECT_ID, and SIGNALWIRE_API_TOKEN.")
+        url = f"{self.base_url}{path}"
+        try:
+            response = requests.request(
+                method=method,
+                url=url,
+                params=params,
+                data=data,
+                json=json_payload,
+                auth=(self.project_id, self.api_token),
+                timeout=30,
+            )
+        except requests.RequestException as exc:
+            raise ProviderError(f"SignalWire request failed: {exc}") from exc
+        if response.status_code >= 400:
+            raise ProviderError(f"SignalWire API error {response.status_code}: {response.text}")
+        return response.json() if response.text else {}
+
+    def _rest_request(
+        self,
+        method: str,
+        path: str,
+        params: dict[str, Any] | None = None,
+        json_payload: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """REST API request (non-LAML endpoints)."""
+        if not self.is_configured():
+            raise ProviderError("SignalWire is not configured.")
+        url = f"https://{self.space_url}/api/relay/rest{path}"
+        try:
+            response = requests.request(
+                method=method,
+                url=url,
+                params=params,
+                json=json_payload,
+                auth=(self.project_id, self.api_token),
+                timeout=30,
+            )
+        except requests.RequestException as exc:
+            raise ProviderError(f"SignalWire request failed: {exc}") from exc
+        if response.status_code >= 400:
+            raise ProviderError(f"SignalWire API error {response.status_code}: {response.text}")
+        return response.json() if response.text else {}
+
+    def search_available_numbers(
+        self,
+        country: str,
+        area_code: str | None,
+        limit: int,
+        require_sms: bool,
+        require_voice: bool,
+        non_voip_only: bool,
+    ) -> list[dict[str, Any]]:
+        params: dict[str, Any] = {"PageSize": limit}
+        if area_code:
+            params["AreaCode"] = area_code
+        if require_sms:
+            params["SmsEnabled"] = "true"
+        if require_voice:
+            params["VoiceEnabled"] = "true"
+        payload = self._request(
+            "GET",
+            f"/Accounts/{self.project_id}/AvailablePhoneNumbers/{country.upper()}/Local.json",
+            params=params,
+        )
+        offers: list[dict[str, Any]] = []
+        for item in payload.get("available_phone_numbers", []):
+            capabilities = item.get("capabilities", {})
+            offers.append({
+                "phone_number": item.get("phone_number"),
+                "provider_number_id": None,
+                "capabilities": {
+                    "sms": bool(capabilities.get("SMS") or capabilities.get("sms")),
+                    "voice": bool(capabilities.get("voice") or capabilities.get("Voice")),
+                },
+                "locality": item.get("locality"),
+                "region": item.get("region"),
+                "line_type": "local",
+                "monthly_cost_estimate": 0.50,
+            })
+        return offers
+
+    def purchase_number(self, phone_number: str) -> dict[str, Any]:
+        payload = self._request(
+            "POST",
+            f"/Accounts/{self.project_id}/IncomingPhoneNumbers.json",
+            data={"PhoneNumber": phone_number},
+        )
+        return {
+            "phone_number": payload.get("phone_number", phone_number),
+            "provider_number_id": payload.get("sid"),
+            "line_type": "local",
+            "raw": payload,
+        }
+
+    def list_owned_numbers(self) -> list[dict[str, Any]]:
+        payload = self._request(
+            "GET",
+            f"/Accounts/{self.project_id}/IncomingPhoneNumbers.json",
+            params={"PageSize": 200},
+        )
+        numbers: list[dict[str, Any]] = []
+        for item in payload.get("incoming_phone_numbers", []):
+            numbers.append({
+                "provider_number_id": item.get("sid"),
+                "phone_number": item.get("phone_number"),
+                "status": item.get("status", "active"),
+            })
+        return numbers
+
+    def release_number(self, provider_number_id: str) -> dict[str, Any]:
+        self._request(
+            "DELETE",
+            f"/Accounts/{self.project_id}/IncomingPhoneNumbers/{provider_number_id}.json",
+        )
+        return {"released": True, "provider_number_id": provider_number_id}
+
+    def send_message(self, from_number: str, to_number: str, body: str) -> dict[str, Any]:
+        payload = self._request(
+            "POST",
+            f"/Accounts/{self.project_id}/Messages.json",
+            data={"From": from_number, "To": to_number, "Body": body},
+        )
+        return {"id": payload.get("sid"), "status": payload.get("status"), "raw": payload}
+
+    def start_call(self, from_number: str, to_number: str, say_text: str) -> dict[str, Any]:
+        twiml = f"<Response><Say>{say_text or 'Connected through 2nd Call.'}</Say></Response>"
+        payload = self._request(
+            "POST",
+            f"/Accounts/{self.project_id}/Calls.json",
+            data={"From": from_number, "To": to_number, "Twiml": twiml},
+        )
+        return {"id": payload.get("sid"), "status": payload.get("status"), "raw": payload}
+
+    def pricing_profile(self) -> dict[str, Any]:
+        return {
+            "number_monthly_usd": 0.50,
+            "sms_outbound_usd": 0.004,
+            "call_per_min_usd": 0.01,
+        }
+
+    def account_balance(self) -> dict[str, Any]:
+        if not self.is_configured():
+            return {"balance": None, "currency": "USD", "source": "not_configured"}
+        try:
+            payload = self._request("GET", f"/Accounts/{self.project_id}/Balance.json")
+            amount = float(payload.get("balance", "0"))
+            return {"balance": amount, "currency": payload.get("currency", "USD"), "source": "signalwire"}
+        except Exception:
+            return {"balance": None, "currency": "USD", "source": "signalwire"}
+
+
 def build_providers() -> dict[str, BaseProvider]:
     providers: dict[str, BaseProvider] = {
         "telnyx": TelnyxProvider(),
+        "signalwire": SignalWireProvider(),
     }
     return providers
 

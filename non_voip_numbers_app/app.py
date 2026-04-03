@@ -114,6 +114,13 @@ def create_app() -> Flask:
             "notes": "Non-VoIP numbers for SMS and voice.",
             "integrated_in_app": True,
         },
+        "signalwire": {
+            "rank": 2,
+            "label": "SignalWire",
+            "estimated_local_number_monthly_usd": f"${NUMBER_PRICE_MONTHLY:.2f}",
+            "notes": "Low-cost numbers for SMS and voice. No setup fee.",
+            "integrated_in_app": True,
+        },
     }
 
     def payload() -> dict[str, Any]:
