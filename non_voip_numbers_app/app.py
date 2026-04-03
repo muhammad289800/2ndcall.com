@@ -423,13 +423,77 @@ def create_app() -> Flask:
     @app.get("/api/webrtc/token")
     @require_auth
     def webrtc_token():
-        """Return SIP credentials for WebRTC client login."""
-        if not _webrtc_cred["sip_username"] or not _webrtc_cred["sip_password"]:
-            return jsonify({"error": "WebRTC not set up. Go to Settings > Setup WebRTC."}), 503
-        return jsonify({
-            "sip_username": _webrtc_cred["sip_username"],
-            "sip_password": _webrtc_cred["sip_password"],
-        })
+        """Return SIP credentials or JWT token for WebRTC client login."""
+        tp = providers.get("telnyx")
+        if not tp or not tp.is_configured():
+            return jsonify({"error": "Telnyx not configured."}), 503
+
+        # Try JWT token first (more reliable for WebRTC)
+        cred_id = _webrtc_cred.get("id", "")
+        if cred_id:
+            try:
+                resp = http_requests.post(
+                    f"https://api.telnyx.com/v2/telephony_credentials/{cred_id}/token",
+                    headers=_get_telnyx_headers(), json={}, timeout=10,
+                )
+                if resp.status_code < 400:
+                    token = resp.text.strip().strip('"')
+                    if token and len(token) > 20:
+                        return jsonify({"login_token": token})
+            except Exception:
+                pass
+
+        # Try to create a telephony credential and get JWT token
+        # Use the new SIP connection ID if available
+        new_conn_id = os.environ.get("TELNYX_SIP_CONNECTION_ID", "").strip()
+        if not new_conn_id:
+            # Try to find it by listing credential connections
+            try:
+                r = http_requests.get("https://api.telnyx.com/v2/credential_connections",
+                    headers=_get_telnyx_headers(), timeout=10)
+                for c in r.json().get("data", []):
+                    if "webrtc" in str(c.get("connection_name", "")).lower() or "2ndcall" in str(c.get("connection_name", "")).lower():
+                        new_conn_id = c.get("id", "")
+                        break
+                    if c.get("active"):
+                        new_conn_id = new_conn_id or c.get("id", "")
+            except Exception:
+                pass
+
+        if new_conn_id and not cred_id:
+            try:
+                import secrets as _s
+                resp = http_requests.post(
+                    "https://api.telnyx.com/v2/telephony_credentials",
+                    headers=_get_telnyx_headers(),
+                    json={"connection_id": new_conn_id, "name": "2ndCall-WebRTC-Token"},
+                    timeout=10,
+                )
+                if resp.status_code < 400:
+                    data = resp.json().get("data", resp.json())
+                    new_cred_id = data.get("id", "")
+                    if new_cred_id:
+                        _webrtc_cred["id"] = new_cred_id
+                        # Try to get token
+                        resp2 = http_requests.post(
+                            f"https://api.telnyx.com/v2/telephony_credentials/{new_cred_id}/token",
+                            headers=_get_telnyx_headers(), json={}, timeout=10,
+                        )
+                        if resp2.status_code < 400:
+                            token = resp2.text.strip().strip('"')
+                            if token and len(token) > 20:
+                                return jsonify({"login_token": token})
+            except Exception:
+                pass
+
+        # Fallback: SIP credentials
+        if _webrtc_cred["sip_username"] and _webrtc_cred["sip_password"]:
+            return jsonify({
+                "sip_username": _webrtc_cred["sip_username"],
+                "sip_password": _webrtc_cred["sip_password"],
+            })
+
+        return jsonify({"error": "WebRTC not set up. Go to Settings > Setup WebRTC."}), 503
 
     @app.get("/sw.js")
     def service_worker():

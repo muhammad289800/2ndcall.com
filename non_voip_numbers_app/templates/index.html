@@ -2879,13 +2879,17 @@ async function initWebRTC() {
 
   try {
     const d = await api("/api/webrtc/token");
-    if (!d.sip_username) { toast("WebRTC: Not configured", "error"); return; }
-    _rtcClient = new RTC({
-      login: d.sip_username,
-      password: d.sip_password,
-      ringtoneFile: "",
-      ringbackFile: "",
-    });
+    let rtcConfig;
+    if (d.login_token) {
+      // JWT token auth (preferred)
+      rtcConfig = { login_token: d.login_token };
+    } else if (d.sip_username) {
+      // SIP credentials auth (fallback)
+      rtcConfig = { login: d.sip_username, password: d.sip_password };
+    } else {
+      toast("WebRTC: Not configured", "error"); return;
+    }
+    _rtcClient = new RTC(rtcConfig);
     _rtcClient.on("telnyx.ready", () => {
       console.log("[WebRTC] Ready");
       toast("Live calling ready", "success");
