@@ -322,6 +322,7 @@ class TelnyxProvider(BaseProvider):
     def __init__(self) -> None:
         self.api_key = os.environ.get("TELNYX_API_KEY", "")
         self.connection_id = os.environ.get("TELNYX_CONNECTION_ID", "")
+        self.sip_connection_id = os.environ.get("TELNYX_SIP_CONNECTION_ID", "")
         self.messaging_profile_id = os.environ.get("TELNYX_MESSAGING_PROFILE_ID", "")
         self.call_webhook_url = os.environ.get("TELNYX_CALL_WEBHOOK_URL", "")
 
@@ -516,28 +517,24 @@ class TelnyxProvider(BaseProvider):
                 "SMS may fail with 40305 until the number is linked to a messaging profile."
             )
 
-        # Assign to Voice API Application so webhooks + call control work immediately.
-        if self.connection_id and number_id:
+        # Assign to SIP Connection (for WebRTC + webhooks) or Voice API App
+        assign_conn = self.sip_connection_id or self.connection_id
+        if assign_conn and number_id:
             try:
-                # Try as call_control_application first (Voice API App)
                 voice_assignment = self._request(
                     "PATCH",
                     f"/phone_numbers/{number_id}/voice",
-                    json_payload={
-                        "connection_id": self.connection_id,
-                        "tech_prefix_enabled": False,
-                    },
+                    json_payload={"connection_id": assign_conn},
                 )
             except ProviderError:
                 try:
-                    # Fallback: assign via phone_numbers endpoint
                     voice_assignment = self._request(
                         "PATCH",
                         f"/phone_numbers/{number_id}",
-                        json_payload={"connection_id": self.connection_id},
+                        json_payload={"connection_id": assign_conn},
                     )
                 except ProviderError as exc:
-                    warnings.append(f"Failed to assign number to voice application: {exc}")
+                    warnings.append(f"Failed to assign number to connection: {exc}")
         elif not self.connection_id:
             warnings.append(
                 "TELNYX_CONNECTION_ID is not configured. "
