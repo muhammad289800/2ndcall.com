@@ -985,6 +985,14 @@ def create_app() -> Flask:
             uid = current_user["id"] if current_user else None
             ensure_wallet_can_cover(estimated_cost, provider_id, user_id=uid)
             result = provider.start_call(from_number, to_number, say_text)
+            # Track that we initiated this call so webhooks don't show it as incoming
+            if result.get("id"):
+                _active_calls[result["id"]] = {
+                    "call_control_id": result["id"],
+                    "from": from_number, "to": to_number,
+                    "direction": "outbound", "status": "ringing",
+                }
+                _our_outbound_numbers.add(to_number)
             safe_result = {"id": result.get("id"), "status": result.get("status")}
             storage.log_call(
                 provider=provider_id,
@@ -1075,7 +1083,8 @@ def create_app() -> Flask:
 
     # In-memory store for active incoming calls (for polling by browser)
     _incoming_calls: list[dict[str, Any]] = []
-    _active_calls: dict[str, dict[str, Any]] = {}  # call_control_id -> call info
+    _active_calls: dict[str, dict[str, Any]] = {}
+    _our_outbound_numbers: set[str] = set()  # track numbers we've called from
 
     @app.get("/api/calls/active")
     @require_auth
@@ -1119,13 +1128,6 @@ def create_app() -> Flask:
             )
             if resp.status_code >= 400:
                 return jsonify({"error": f"Failed to answer: {resp.text}"}), 502
-            # Speak greeting after answering
-            http_requests.post(
-                f"https://api.telnyx.com/v2/calls/{call_control_id}/actions/speak",
-                headers=headers,
-                json={"payload": "Thank you for calling. You are now connected.", "voice": "female", "language": "en-US"},
-                timeout=10,
-            )
             # Remove from incoming list
             _incoming_calls[:] = [c for c in _incoming_calls if c.get("call_control_id") != call_control_id]
             return jsonify({"ok": True, "call_control_id": call_control_id})
@@ -1215,8 +1217,15 @@ def create_app() -> Flask:
             api_key = telnyx_provider.api_key if telnyx_provider else ""
             cc_headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
 
-            # ── Incoming call: store for browser notification (don't auto-answer) ──
-            if event_type == "call.initiated" and direction_raw == "incoming" and call_control_id:
+            # ── Determine if this is a truly external incoming call ──
+            is_our_outbound = (
+                from_number in _our_outbound_numbers
+                or to_number in _our_outbound_numbers
+                or call_control_id in _active_calls
+            )
+
+            # ── Incoming call: only show if it's truly from outside ──
+            if event_type == "call.initiated" and direction_raw == "incoming" and call_control_id and not is_our_outbound:
                 import time as _time
                 _incoming_calls.append({
                     "call_control_id": call_control_id,
@@ -1239,32 +1248,10 @@ def create_app() -> Flask:
                     "_ts": _time.time(),
                 }
 
-            # ── Call answered: update status, keep alive with TTS ──
+            # ── Call answered: update status (no TTS — let WebRTC handle audio) ──
             if event_type == "call.answered" and call_control_id:
-                import time as _time
-                # Track if not already tracked
-                if call_control_id not in _active_calls:
-                    _active_calls[call_control_id] = {
-                        "call_control_id": call_control_id,
-                        "from": from_number,
-                        "to": to_number,
-                        "direction": direction,
-                        "status": "answered",
-                        "_ts": _time.time(),
-                    }
-                else:
+                if call_control_id in _active_calls:
                     _active_calls[call_control_id]["status"] = "answered"
-                # Speak so the call stays alive
-                if api_key:
-                    try:
-                        http_requests.post(
-                            f"https://api.telnyx.com/v2/calls/{call_control_id}/actions/speak",
-                            headers=cc_headers,
-                            json={"payload": "Connected through 2nd Call.", "voice": "female", "language": "en-US"},
-                            timeout=10,
-                        )
-                    except Exception:
-                        pass
 
             # ── Call hangup: clean up ──
             if event_type == "call.hangup" and call_control_id:
