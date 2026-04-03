@@ -1,0 +1,22 @@
+{
+  "name": "2ndcall-mobile",
+  "version": "1.0.0",
+  "description": "2ndCall - Virtual Phone Numbers for SMS and Calls",
+  "main": "index.js",
+  "scripts": {
+    "sync": "npx cap sync",
+    "build:android": "npx cap sync android && npx cap open android",
+    "build:ios": "npx cap sync ios && npx cap open ios",
+    "run:android": "npx cap run android",
+    "run:ios": "npx cap run ios"
+  },
+  "keywords": ["phone", "sms", "voip", "webrtc"],
+  "author": "2ndCall",
+  "license": "ISC",
+  "dependencies": {
+    "@capacitor/android": "^8.3.0",
+    "@capacitor/cli": "^8.3.0",
+    "@capacitor/core": "^8.3.0",
+    "@capacitor/ios": "^8.3.0"
+  }
+}
