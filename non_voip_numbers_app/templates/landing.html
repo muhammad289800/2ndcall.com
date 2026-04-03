@@ -1,0 +1,315 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>2ndCall — Virtual Phone Numbers for SMS & Calls</title>
+  <meta name="description" content="Get virtual US phone numbers for SMS verification, calls, and messaging. Non-VoIP numbers starting at $2/month." />
+  <meta name="theme-color" content="#4f8fff" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <link rel="manifest" href="/static/manifest.json" />
+  <link rel="icon" type="image/png" sizes="192x192" href="/static/icons/icon-192.png" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0a0e14; --surface: #12171f; --surface2: #1a2030;
+      --border: rgba(255,255,255,.06);
+      --text: #eaf0f8; --muted: #7a8698;
+      --accent: #4f8fff; --accent-h: #6ea3ff;
+      --green: #34d399; --yellow: #fbbf24;
+    }
+    html { scroll-behavior: smooth; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, sans-serif;
+           background: var(--bg); color: var(--text); font-size: 16px; line-height: 1.6;
+           -webkit-font-smoothing: antialiased; }
+    a { color: var(--accent-h); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    /* ── Nav ── */
+    .nav {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+      background: rgba(10,14,20,.85); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 14px 32px; max-width: 1200px; margin: 0 auto;
+    }
+    @media (min-width: 1200px) { .nav { left: 50%; transform: translateX(-50%); border-radius: 0 0 16px 16px; } }
+    .nav-logo { font-size: 24px; font-weight: 900; color: var(--accent); letter-spacing: -1px; }
+    .nav-logo span { color: var(--accent-h); }
+    .nav-links { display: flex; gap: 24px; align-items: center; }
+    .nav-links a { color: var(--muted); font-size: 14px; font-weight: 500; }
+    .nav-links a:hover { color: var(--text); text-decoration: none; }
+    .btn { display: inline-flex; align-items: center; gap: 8px; padding: 10px 24px; border-radius: 10px;
+           font-size: 14px; font-weight: 600; cursor: pointer; border: none; transition: all .2s; text-decoration: none; }
+    .btn-primary { background: linear-gradient(135deg, #4f8fff, #3b6de0); color: white; box-shadow: 0 4px 16px rgba(79,143,255,.3); }
+    .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 6px 24px rgba(79,143,255,.4); text-decoration: none; }
+    .btn-outline { background: transparent; color: var(--text); border: 1px solid var(--border); }
+    .btn-outline:hover { background: var(--surface); text-decoration: none; }
+    .btn-lg { padding: 14px 32px; font-size: 16px; border-radius: 12px; }
+
+    /* ── Hero ── */
+    .hero {
+      min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center;
+      text-align: center; padding: 120px 24px 80px;
+      background: radial-gradient(ellipse at 50% 0%, rgba(79,143,255,.1) 0%, transparent 60%), var(--bg);
+    }
+    .hero-badge {
+      display: inline-flex; align-items: center; gap: 8px; padding: 6px 16px;
+      background: rgba(79,143,255,.1); border: 1px solid rgba(79,143,255,.15); border-radius: 20px;
+      font-size: 13px; font-weight: 600; color: var(--accent-h); margin-bottom: 24px;
+    }
+    .hero h1 { font-size: clamp(36px, 6vw, 64px); font-weight: 900; letter-spacing: -2px; line-height: 1.1; margin-bottom: 20px; max-width: 700px; }
+    .hero h1 .gradient { background: linear-gradient(135deg, #4f8fff, #34d399); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+    .hero p { font-size: 18px; color: var(--muted); max-width: 540px; margin-bottom: 36px; line-height: 1.7; }
+    .hero-actions { display: flex; gap: 16px; flex-wrap: wrap; justify-content: center; }
+    .hero-stats { display: flex; gap: 48px; margin-top: 64px; }
+    .hero-stat { text-align: center; }
+    .hero-stat .num { font-size: 32px; font-weight: 900; color: var(--text); }
+    .hero-stat .label { font-size: 13px; color: var(--muted); margin-top: 4px; }
+
+    /* ── Sections ── */
+    .section { padding: 100px 24px; max-width: 1100px; margin: 0 auto; }
+    .section-header { text-align: center; margin-bottom: 64px; }
+    .section-header h2 { font-size: 36px; font-weight: 800; letter-spacing: -1px; margin-bottom: 12px; }
+    .section-header p { font-size: 16px; color: var(--muted); max-width: 500px; margin: 0 auto; }
+
+    /* ── Features ── */
+    .features-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 24px; }
+    .feature-card {
+      background: var(--surface); border: 1px solid var(--border); border-radius: 20px;
+      padding: 32px; transition: all .2s; position: relative; overflow: hidden;
+    }
+    .feature-card:hover { border-color: rgba(79,143,255,.15); transform: translateY(-2px); box-shadow: 0 8px 32px rgba(0,0,0,.3); }
+    .feature-icon { font-size: 36px; margin-bottom: 16px; }
+    .feature-card h3 { font-size: 18px; font-weight: 700; margin-bottom: 8px; }
+    .feature-card p { font-size: 14px; color: var(--muted); line-height: 1.6; }
+
+    /* ── Pricing ── */
+    .pricing-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 24px; max-width: 700px; margin: 0 auto; }
+    .pricing-card {
+      background: var(--surface); border: 1px solid var(--border); border-radius: 20px;
+      padding: 36px; text-align: center; position: relative; transition: all .2s;
+    }
+    .pricing-card.featured { border-color: var(--accent); box-shadow: 0 0 40px rgba(79,143,255,.1); }
+    .pricing-card.featured::before { content: "POPULAR"; position: absolute; top: -12px; left: 50%; transform: translateX(-50%);
+      background: var(--accent); color: white; font-size: 11px; font-weight: 700; padding: 4px 14px; border-radius: 10px; }
+    .pricing-card h3 { font-size: 18px; font-weight: 700; margin-bottom: 8px; }
+    .pricing-price { font-size: 48px; font-weight: 900; margin: 16px 0 4px; }
+    .pricing-price span { font-size: 16px; color: var(--muted); font-weight: 500; }
+    .pricing-save { font-size: 13px; color: var(--green); font-weight: 600; margin-bottom: 20px; height: 20px; }
+    .pricing-features { list-style: none; text-align: left; margin-bottom: 28px; }
+    .pricing-features li { padding: 8px 0; font-size: 14px; color: var(--muted); border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 10px; }
+    .pricing-features li::before { content: "✓"; color: var(--green); font-weight: 700; font-size: 16px; }
+
+    /* ── Use cases ── */
+    .usecases-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 20px; }
+    .usecase {
+      background: var(--surface); border: 1px solid var(--border); border-radius: 16px;
+      padding: 24px; text-align: center;
+    }
+    .usecase-icon { font-size: 32px; margin-bottom: 12px; }
+    .usecase h4 { font-size: 15px; font-weight: 700; margin-bottom: 6px; }
+    .usecase p { font-size: 13px; color: var(--muted); }
+
+    /* ── Footer ── */
+    .footer {
+      border-top: 1px solid var(--border); padding: 48px 24px;
+      text-align: center; color: var(--muted); font-size: 13px;
+    }
+    .footer-logo { font-size: 20px; font-weight: 900; color: var(--accent); margin-bottom: 12px; }
+
+    /* ── CTA ── */
+    .cta-section {
+      text-align: center; padding: 80px 24px;
+      background: radial-gradient(ellipse at 50% 50%, rgba(79,143,255,.08) 0%, transparent 60%);
+    }
+    .cta-section h2 { font-size: 32px; font-weight: 800; margin-bottom: 12px; }
+    .cta-section p { color: var(--muted); margin-bottom: 28px; font-size: 16px; }
+
+    /* ── Responsive ── */
+    @media (max-width: 640px) {
+      .nav { padding: 12px 16px; }
+      .nav-links a.hide-mobile { display: none; }
+      .hero-stats { gap: 24px; }
+      .hero-stat .num { font-size: 24px; }
+      .section { padding: 60px 16px; }
+      .section-header h2 { font-size: 28px; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- Nav -->
+<nav class="nav">
+  <div class="nav-logo">2nd<span>Call</span></div>
+  <div class="nav-links">
+    <a href="#features" class="hide-mobile">Features</a>
+    <a href="#pricing" class="hide-mobile">Pricing</a>
+    <a href="#usecases" class="hide-mobile">Use Cases</a>
+    <a href="/app" class="btn btn-outline">Sign In</a>
+    <a href="/app" class="btn btn-primary">Get Started</a>
+  </div>
+</nav>
+
+<!-- Hero -->
+<section class="hero">
+  <div class="hero-badge">
+    <span style="width:8px;height:8px;border-radius:50%;background:var(--green);display:inline-block;"></span>
+    Virtual phone numbers — available now
+  </div>
+  <h1>Your Second Number, <span class="gradient">Your Privacy</span></h1>
+  <p>Get instant US virtual phone numbers for SMS messaging, voice calls, and verification codes. Keep your personal number private.</p>
+  <div class="hero-actions">
+    <a href="/app" class="btn btn-primary btn-lg">Get Your Number — $2/mo</a>
+    <a href="#features" class="btn btn-outline btn-lg">Learn More</a>
+  </div>
+  <div class="hero-stats">
+    <div class="hero-stat"><div class="num">US</div><div class="label">Phone Numbers</div></div>
+    <div class="hero-stat"><div class="num">SMS</div><div class="label">& Voice Calls</div></div>
+    <div class="hero-stat"><div class="num">24/7</div><div class="label">Available</div></div>
+    <div class="hero-stat"><div class="num">Instant</div><div class="label">Activation</div></div>
+  </div>
+</section>
+
+<!-- Features -->
+<section class="section" id="features">
+  <div class="section-header">
+    <h2>Everything You Need</h2>
+    <p>A complete virtual phone system in your browser and on your phone.</p>
+  </div>
+  <div class="features-grid">
+    <div class="feature-card">
+      <div class="feature-icon">📱</div>
+      <h3>Virtual Phone Numbers</h3>
+      <p>Get US local numbers instantly. Choose your area code. Numbers work for SMS and voice calls.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">💬</div>
+      <h3>SMS Messaging</h3>
+      <p>Send and receive text messages. Full conversation view with real-time message delivery.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">📞</div>
+      <h3>Voice Calls</h3>
+      <p>Make and receive calls directly from your browser or mobile app. Full dialpad with call controls.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">🔒</div>
+      <h3>Privacy First</h3>
+      <p>Keep your personal number private. Use your virtual number for online signups, dating, and business.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">✅</div>
+      <h3>Verification Codes</h3>
+      <p>Receive OTP and verification codes from services like Amazon, eBay, Google, and more.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">🌐</div>
+      <h3>Works Everywhere</h3>
+      <p>Use on desktop, mobile browser, or install as an app on Android and iOS. No downloads needed.</p>
+    </div>
+  </div>
+</section>
+
+<!-- Pricing -->
+<section class="section" id="pricing" style="background: radial-gradient(ellipse at 50% 50%, rgba(79,143,255,.04) 0%, transparent 60%);">
+  <div class="section-header">
+    <h2>Simple Pricing</h2>
+    <p>No hidden fees. No setup charges. Cancel anytime.</p>
+  </div>
+  <div class="pricing-grid">
+    <div class="pricing-card">
+      <h3>Monthly</h3>
+      <div class="pricing-price">$2<span>/mo</span></div>
+      <div class="pricing-save">&nbsp;</div>
+      <ul class="pricing-features">
+        <li>US local phone number</li>
+        <li>Unlimited incoming SMS</li>
+        <li>Unlimited incoming calls</li>
+        <li>Send SMS messages</li>
+        <li>Make outbound calls</li>
+        <li>Web & mobile app access</li>
+        <li>Choose your area code</li>
+      </ul>
+      <a href="/app" class="btn btn-outline" style="width:100%;justify-content:center;">Get Started</a>
+    </div>
+    <div class="pricing-card featured">
+      <h3>Yearly</h3>
+      <div class="pricing-price">$20<span>/yr</span></div>
+      <div class="pricing-save">Save $4 per year</div>
+      <ul class="pricing-features">
+        <li>Everything in Monthly</li>
+        <li>US local phone number</li>
+        <li>Unlimited incoming SMS</li>
+        <li>Unlimited incoming calls</li>
+        <li>Send SMS messages</li>
+        <li>Make outbound calls</li>
+        <li>Priority support</li>
+      </ul>
+      <a href="/app" class="btn btn-primary" style="width:100%;justify-content:center;">Get Started — Save $4</a>
+    </div>
+  </div>
+</section>
+
+<!-- Use Cases -->
+<section class="section" id="usecases">
+  <div class="section-header">
+    <h2>Popular Use Cases</h2>
+    <p>How people use 2ndCall every day.</p>
+  </div>
+  <div class="usecases-grid">
+    <div class="usecase">
+      <div class="usecase-icon">🛒</div>
+      <h4>Online Shopping</h4>
+      <p>Use for Amazon, eBay, and other marketplace verifications without exposing your real number.</p>
+    </div>
+    <div class="usecase">
+      <div class="usecase-icon">🔐</div>
+      <h4>Two-Factor Auth</h4>
+      <p>Receive OTP codes from banks, social media, and email services securely.</p>
+    </div>
+    <div class="usecase">
+      <div class="usecase-icon">💼</div>
+      <h4>Business</h4>
+      <p>Separate work and personal calls. Give clients a professional number.</p>
+    </div>
+    <div class="usecase">
+      <div class="usecase-icon">❤️</div>
+      <h4>Dating & Social</h4>
+      <p>Keep your personal number private when meeting new people online.</p>
+    </div>
+    <div class="usecase">
+      <div class="usecase-icon">🌍</div>
+      <h4>Travel</h4>
+      <p>Get a US number while abroad. Stay connected with US contacts and services.</p>
+    </div>
+    <div class="usecase">
+      <div class="usecase-icon">🏠</div>
+      <h4>Classifieds & Rentals</h4>
+      <p>List on Craigslist, Facebook Marketplace without sharing your real number.</p>
+    </div>
+  </div>
+</section>
+
+<!-- CTA -->
+<section class="cta-section">
+  <h2>Ready to Get Your Second Number?</h2>
+  <p>Sign up in 30 seconds. No credit card required to start.</p>
+  <a href="/app" class="btn btn-primary btn-lg">Get Started — Free Sign Up</a>
+</section>
+
+<!-- Footer -->
+<footer class="footer">
+  <div class="footer-logo">2nd<span style="color:var(--accent-h)">Call</span></div>
+  <p style="margin-bottom:16px;">Virtual phone numbers for SMS, calls, and verification codes.</p>
+  <p>&copy; 2026 2ndCall by MBNECOM LLC. All rights reserved.</p>
+  <p style="margin-top:12px;">
+    <a href="/app">Sign In</a> &middot;
+    <a href="#features">Features</a> &middot;
+    <a href="#pricing">Pricing</a> &middot;
+    <a href="mailto:support@2ndcall.com">Contact</a>
+  </p>
+</footer>
+
+</body>
+</html>

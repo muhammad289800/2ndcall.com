@@ -319,6 +319,20 @@ def create_app() -> Flask:
 
     @app.get("/")
     def home():
+        # If user is logged in, show the app
+        if _auth_ok() and (session.get("user_id") or session.get("authed")):
+            pricing_rows = sorted(provider_pricing.values(), key=lambda item: item["rank"])
+            return render_template(
+                "index.html",
+                providers=providers,
+                pricing_rows=pricing_rows,
+            )
+        # Otherwise show the landing page
+        return render_template("landing.html")
+
+    @app.get("/app")
+    def app_dashboard():
+        """Always show the app (with login screen if not authenticated)."""
         pricing_rows = sorted(provider_pricing.values(), key=lambda item: item["rank"])
         return render_template(
             "index.html",
