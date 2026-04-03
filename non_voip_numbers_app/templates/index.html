@@ -2914,16 +2914,69 @@ function handleRTCNotification(notification) {
   if (!notification || !notification.call) return;
   const call = notification.call;
   const state = call.state;
+  console.log("[WebRTC] Call state:", state, "direction:", call.direction);
+
   if (state === "ringing" && call.direction === "inbound") {
     showIncomingCall(call);
   } else if (state === "active" || state === "answering") {
     showActiveCall(call);
+    // Attach remote audio stream
+    attachRemoteAudio(call);
   } else if (state === "hangup" || state === "destroy" || state === "purge") {
+    removeRemoteAudio();
     endCallUI();
   } else if (state === "trying" || state === "early" || state === "requesting") {
-    // Outbound ringing
     updateCallStatus("Ringing…");
   }
+}
+
+function attachRemoteAudio(call) {
+  // Remove any existing audio element
+  removeRemoteAudio();
+
+  // Method 1: Use call.remoteStream if available
+  const stream = call.remoteStream || call.options?.remoteStream;
+  if (stream) {
+    const audio = document.createElement("audio");
+    audio.id = "remote-audio";
+    audio.autoplay = true;
+    audio.srcObject = stream;
+    audio.volume = 1.0;
+    document.body.appendChild(audio);
+    audio.play().catch(() => {});
+    console.log("[WebRTC] Remote audio attached via stream");
+    return;
+  }
+
+  // Method 2: Use call.peer if available (older SDK versions)
+  if (call.peer && call.peer.remoteStream) {
+    const audio = document.createElement("audio");
+    audio.id = "remote-audio";
+    audio.autoplay = true;
+    audio.srcObject = call.peer.remoteStream;
+    audio.volume = 1.0;
+    document.body.appendChild(audio);
+    audio.play().catch(() => {});
+    console.log("[WebRTC] Remote audio attached via peer");
+    return;
+  }
+
+  // Method 3: Check for existing audio/video elements from SDK
+  const sdkAudio = document.querySelector("audio[id*='telnyx'], video[id*='telnyx']");
+  if (sdkAudio) {
+    sdkAudio.volume = 1.0;
+    sdkAudio.autoplay = true;
+    sdkAudio.play().catch(() => {});
+    console.log("[WebRTC] Found SDK audio element");
+    return;
+  }
+
+  console.log("[WebRTC] No remote audio stream found - call keys:", call ? Object.keys(call).join(",") : "null");
+}
+
+function removeRemoteAudio() {
+  const el = document.getElementById("remote-audio");
+  if (el) { el.srcObject = null; el.remove(); }
 }
 
 function startIncomingPoll() {
