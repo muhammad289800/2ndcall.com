@@ -1037,11 +1037,18 @@ def create_app() -> Flask:
                 # Always use SignalWire for bridge calls (supports international numbers)
                 sw_provider = providers.get("signalwire")
                 if sw_provider and sw_provider.is_configured() and hasattr(sw_provider, 'start_bridged_call'):
-                    result = sw_provider.start_bridged_call(from_number, personal_number, to_number)
+                    # Use a SignalWire-owned number as caller ID
+                    sw_from = from_number
+                    try:
+                        sw_numbers = sw_provider.list_owned_numbers()
+                        if sw_numbers:
+                            sw_from = sw_numbers[0].get("phone_number", from_number)
+                    except Exception:
+                        pass
+                    result = sw_provider.start_bridged_call(sw_from, personal_number, to_number)
                 elif hasattr(provider, 'start_bridged_call'):
                     result = provider.start_bridged_call(from_number, personal_number, to_number)
                 else:
-                    # Telnyx fallback: call personal number first, bridge via webhook
                     result = provider.start_call(from_number, personal_number, say_text)
             else:
                 # Direct call (no bridge)
