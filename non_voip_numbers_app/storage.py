@@ -164,6 +164,8 @@ class Storage:
             self._ensure_column(conn, "users", "last_seen", "TEXT")
             # Per-user wallet: user_id = NULL means global/admin transaction
             self._ensure_column(conn, "wallet_transactions", "user_id", "INTEGER DEFAULT NULL")
+            # Per-user number isolation
+            self._ensure_column(conn, "managed_numbers", "user_id", "INTEGER DEFAULT NULL")
 
     def _ensure_column(
         self,
@@ -177,16 +179,28 @@ class Storage:
             return
         conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {column_definition}")
 
-    def list_numbers(self) -> list[dict[str, Any]]:
+    def list_numbers(self, user_id: int | None = None, admin: bool = False) -> list[dict[str, Any]]:
         with self._connect() as conn:
-            rows = conn.execute(
-                """
-                SELECT id, provider, phone_number, provider_number_id, line_type, status,
-                       metadata_json, created_at, updated_at
-                FROM managed_numbers
-                ORDER BY created_at DESC
-                """
-            ).fetchall()
+            if admin or user_id is None:
+                rows = conn.execute(
+                    """
+                    SELECT id, provider, phone_number, provider_number_id, line_type, status,
+                           metadata_json, created_at, updated_at, user_id
+                    FROM managed_numbers
+                    ORDER BY created_at DESC
+                    """
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    """
+                    SELECT id, provider, phone_number, provider_number_id, line_type, status,
+                           metadata_json, created_at, updated_at, user_id
+                    FROM managed_numbers
+                    WHERE user_id = ?
+                    ORDER BY created_at DESC
+                    """,
+                    (user_id,),
+                ).fetchall()
         output: list[dict[str, Any]] = []
         for row in rows:
             row_dict = dict(row)
@@ -219,6 +233,7 @@ class Storage:
         line_type: str = "unknown",
         status: str = "active",
         metadata: dict[str, Any] | None = None,
+        user_id: int | None = None,
     ) -> dict[str, Any]:
         now = utc_now()
         metadata_json = json.dumps(metadata or {})
@@ -227,16 +242,17 @@ class Storage:
                 """
                 INSERT INTO managed_numbers (
                     provider, phone_number, provider_number_id, line_type, status,
-                    metadata_json, created_at, updated_at
+                    metadata_json, created_at, updated_at, user_id
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(phone_number) DO UPDATE SET
                     provider = excluded.provider,
                     provider_number_id = excluded.provider_number_id,
                     line_type = excluded.line_type,
                     status = excluded.status,
                     metadata_json = excluded.metadata_json,
-                    updated_at = excluded.updated_at
+                    updated_at = excluded.updated_at,
+                    user_id = excluded.user_id
                 """,
                 (
                     provider,
@@ -247,6 +263,7 @@ class Storage:
                     metadata_json,
                     now,
                     now,
+                    user_id,
                 ),
             )
         with self._connect() as conn:
@@ -334,27 +351,36 @@ class Storage:
                 ),
             )
 
-    def list_message_logs(self, limit: int = 100, direction: str | None = None) -> list[dict[str, Any]]:
+    def list_message_logs(
+        self,
+        limit: int = 100,
+        direction: str | None = None,
+        user_numbers: list[str] | None = None,
+    ) -> list[dict[str, Any]]:
         with self._connect() as conn:
+            clauses: list[str] = []
+            params: list[Any] = []
             if direction:
-                rows = conn.execute(
-                    """
-                    SELECT * FROM message_logs
-                    WHERE direction = ?
-                    ORDER BY created_at DESC
-                    LIMIT ?
-                    """,
-                    (direction, limit),
-                ).fetchall()
-            else:
-                rows = conn.execute(
-                    """
-                    SELECT * FROM message_logs
-                    ORDER BY created_at DESC
-                    LIMIT ?
-                    """,
-                    (limit,),
-                ).fetchall()
+                clauses.append("direction = ?")
+                params.append(direction)
+            if user_numbers is not None:
+                if not user_numbers:
+                    return []
+                placeholders = ",".join("?" for _ in user_numbers)
+                clauses.append(f"(from_number IN ({placeholders}) OR to_number IN ({placeholders}))")
+                params.extend(user_numbers)
+                params.extend(user_numbers)
+            where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
+            params.append(limit)
+            rows = conn.execute(
+                f"""
+                SELECT * FROM message_logs
+                {where}
+                ORDER BY created_at DESC
+                LIMIT ?
+                """,
+                params,
+            ).fetchall()
         output: list[dict[str, Any]] = []
         for row in rows:
             row_dict = dict(row)

@@ -26,6 +26,8 @@ class BaseProvider:
         require_sms: bool,
         require_voice: bool,
         non_voip_only: bool,
+        city: str | None = None,
+        state: str | None = None,
     ) -> list[dict[str, Any]]:
         raise NotImplementedError
 
@@ -82,6 +84,8 @@ class MockProvider(BaseProvider):
         require_sms: bool,
         require_voice: bool,
         non_voip_only: bool,
+        city: str | None = None,
+        state: str | None = None,
     ) -> list[dict[str, Any]]:
         offers: list[dict[str, Any]] = []
         line_cycle = ["mobile", "landline", "voip"]
@@ -205,6 +209,8 @@ class TwilioProvider(BaseProvider):
         require_sms: bool,
         require_voice: bool,
         non_voip_only: bool,
+        city: str | None = None,
+        state: str | None = None,
     ) -> list[dict[str, Any]]:
         params: dict[str, Any] = {
             "PageSize": limit,
@@ -213,6 +219,10 @@ class TwilioProvider(BaseProvider):
         }
         if area_code:
             params["AreaCode"] = area_code
+        if city:
+            params["InLocality"] = city
+        if state:
+            params["InRegion"] = state
         payload = self._request(
             "GET",
             f"/Accounts/{self.account_sid}/AvailablePhoneNumbers/{country.upper()}/Local.json",
@@ -379,6 +389,8 @@ class TelnyxProvider(BaseProvider):
         require_sms: bool,
         require_voice: bool,
         non_voip_only: bool,
+        city: str | None = None,
+        state: str | None = None,
     ) -> list[dict[str, Any]]:
         params: list[tuple[str, str]] = [
             ("filter[country_code]", country.upper()),
@@ -390,6 +402,10 @@ class TelnyxProvider(BaseProvider):
             params.append(("filter[features][]", "voice"))
         if area_code:
             params.append(("filter[national_destination_code]", area_code))
+        if city:
+            params.append(("filter[locality]", city))
+        if state:
+            params.append(("filter[administrative_area]", state))
 
         payload = self._request("GET", "/available_phone_numbers", params=params)
         offers: list[dict[str, Any]] = []
@@ -715,6 +731,8 @@ class SignalWireProvider(BaseProvider):
         require_sms: bool,
         require_voice: bool,
         non_voip_only: bool,
+        city: str | None = None,
+        state: str | None = None,
     ) -> list[dict[str, Any]]:
         params: dict[str, Any] = {"PageSize": limit}
         if area_code:
@@ -723,6 +741,10 @@ class SignalWireProvider(BaseProvider):
             params["SmsEnabled"] = "true"
         if require_voice:
             params["VoiceEnabled"] = "true"
+        if city:
+            params["InLocality"] = city
+        if state:
+            params["InRegion"] = state
         payload = self._request(
             "GET",
             f"/Accounts/{self.project_id}/AvailablePhoneNumbers/{country.upper()}/Local.json",

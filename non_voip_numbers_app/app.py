@@ -713,7 +713,11 @@ def create_app() -> Flask:
     @app.get("/api/numbers")
     @require_auth
     def list_numbers():
-        return jsonify({"numbers": storage.list_numbers()})
+        current_user = _get_session_user()
+        is_admin = _is_admin()
+        uid = current_user["id"] if current_user else None
+        numbers = storage.list_numbers(user_id=uid, admin=is_admin)
+        return jsonify({"numbers": numbers})
 
     @app.post("/api/numbers/search")
     @require_auth
@@ -725,6 +729,8 @@ def create_app() -> Flask:
             results = provider.search_available_numbers(
                 country=body.get("country", "US"),
                 area_code=body.get("area_code") or None,
+                city=body.get("city") or None,
+                state=body.get("state") or None,
                 limit=parse_int(body.get("limit"), 15, 1, 50),
                 require_sms=parse_bool(body.get("require_sms"), True),
                 require_voice=parse_bool(body.get("require_voice"), True),
@@ -774,6 +780,7 @@ def create_app() -> Flask:
                 line_type=line_type,
                 status="active",
                 metadata={"plan": plan, "price": estimated_cost},
+                user_id=uid,
             )
             wallet_info = None
             if uid is not None and estimated_cost > 0:
@@ -909,6 +916,7 @@ def create_app() -> Flask:
             line_type="unknown",
             status="active",
             metadata={"assigned_to": email, "user_id": user["id"]},
+            user_id=user["id"],
         )
         return jsonify({"ok": True, "number": record, "user": user})
 
@@ -917,7 +925,16 @@ def create_app() -> Flask:
     def list_messages():
         direction = request.args.get("direction")
         limit = parse_int(request.args.get("limit"), 100, 1, 500)
-        return jsonify({"messages": storage.list_message_logs(limit=limit, direction=direction)})
+        is_admin = _is_admin()
+        user_numbers: list[str] | None = None
+        if not is_admin:
+            current_user = _get_session_user()
+            uid = current_user["id"] if current_user else None
+            nums = storage.list_numbers(user_id=uid, admin=False)
+            user_numbers = [n["phone_number"] for n in nums]
+        return jsonify({"messages": storage.list_message_logs(
+            limit=limit, direction=direction, user_numbers=user_numbers
+        )})
 
     @app.post("/api/messages/send")
     @require_auth
