@@ -2878,21 +2878,21 @@ function showNotification(title, body, tag) {
 let _prevConvoState = {};
 
 function detectNewMessages(conversations) {
+  const isFirstLoad = Object.keys(_prevConvoState).length === 0;
   const newState = {};
   (conversations || []).forEach(c => {
     newState[c.contact] = c.last_time;
-    const prev = _prevConvoState[c.contact];
-    if (c.last_direction === 'inbound' && prev && c.last_time !== prev) {
-      playSound('message');
-      const name = contactName(c.contact);
-      const preview = c.last_body || '';
-      showNotification('New Message', (name !== c.contact ? name + ': ' : '') + preview, 'msg-' + c.contact);
+    if (!isFirstLoad && c.last_direction === 'inbound') {
+      const prev = _prevConvoState[c.contact];
+      // Alert if: new contact appeared OR existing contact has new message
+      if (!prev || c.last_time !== prev) {
+        playSound('message');
+        const name = contactName(c.contact);
+        const preview = c.last_body || '';
+        showNotification('New Message', (name !== c.contact ? name + ': ' : '') + preview, 'msg-' + c.contact);
+      }
     }
   });
-  // On first load, just record state without alerting
-  if (Object.keys(_prevConvoState).length > 0 || conversations.length === 0) {
-    // already initialized or empty
-  }
   _prevConvoState = newState;
 }
 
@@ -2925,10 +2925,31 @@ function updateSidebarUser() {
   }
 }
 async function initApp() {
-  // Request browser notification permission
+  // Request browser notification permission with visible prompt
   if ('Notification' in window && Notification.permission === 'default') {
-    Notification.requestPermission();
+    Notification.requestPermission().then(p => {
+      if (p === 'granted') toast("Notifications enabled", "success");
+    });
   }
+
+  // Unlock AudioContext on first user interaction (required by mobile browsers)
+  function unlockAudio() {
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const buf = ctx.createBuffer(1, 1, 22050);
+      const src = ctx.createBufferSource();
+      src.buffer = buf;
+      src.connect(ctx.destination);
+      src.start(0);
+      _audioCtx = ctx;
+      console.log("[Audio] Unlocked");
+    } catch(e) {}
+    document.removeEventListener('touchstart', unlockAudio);
+    document.removeEventListener('click', unlockAudio);
+  }
+  document.addEventListener('touchstart', unlockAudio, {once: true});
+  document.addEventListener('click', unlockAudio, {once: true});
+
   buildDialpad();
   // Render webhook URLs immediately
   const base = window.location.origin;
