@@ -45,6 +45,15 @@ def create_app() -> Flask:
     app.json.sort_keys = False
     app.secret_key = os.environ.get("SECRET_KEY", os.urandom(32).hex())
 
+    # Prevent caching of HTML pages so updates are always served fresh
+    @app.after_request
+    def add_no_cache_headers(response):
+        if 'text/html' in response.content_type:
+            response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+            response.headers['Pragma'] = 'no-cache'
+            response.headers['Expires'] = '0'
+        return response
+
     storage = Storage()
     providers = build_providers()
 
