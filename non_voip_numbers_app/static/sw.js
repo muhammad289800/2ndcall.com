@@ -1,6 +1,5 @@
-const CACHE_NAME = "2ndcall-v1";
+const CACHE_NAME = "2ndcall-v2";
 const PRECACHE = [
-  "/",
   "/static/manifest.json",
   "/static/icons/icon-192.png",
   "/static/icons/icon-512.png",
@@ -34,11 +33,14 @@ self.addEventListener('notificationclick', (event) => {
 self.addEventListener("fetch", (e) => {
   const url = new URL(e.request.url);
 
-  // Never cache API calls, webhooks, or auth endpoints
+  // Never cache API calls, webhooks, auth, or HTML pages
   if (
     url.pathname.startsWith("/api/") ||
     url.pathname.startsWith("/webhooks/") ||
-    e.request.method !== "GET"
+    url.pathname === "/" ||
+    url.pathname === "/app" ||
+    e.request.method !== "GET" ||
+    e.request.headers.get("accept")?.includes("text/html")
   ) {
     return;
   }
