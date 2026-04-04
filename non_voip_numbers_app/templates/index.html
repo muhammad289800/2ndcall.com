@@ -707,6 +707,28 @@
 <!-- ── App ── -->
 <div id="app" class="hidden">
 
+  <!-- Notification permission banner -->
+  <div id="notif-banner" class="hidden" style="
+    position:fixed;top:0;left:0;right:0;z-index:900;
+    background:linear-gradient(135deg,#1a3a6e,#0f2447);
+    border-bottom:1px solid rgba(79,143,255,.2);
+    padding:12px 20px;display:flex;align-items:center;justify-content:space-between;gap:12px;
+  ">
+    <div style="font-size:13px;color:var(--text);">
+      <strong>Enable notifications</strong> to get alerts for calls and messages
+    </div>
+    <div style="display:flex;gap:8px;">
+      <button id="notif-enable-btn" onclick="requestNotifPermission()" style="
+        padding:8px 16px;border-radius:8px;border:none;
+        background:var(--accent);color:white;font-size:13px;font-weight:600;cursor:pointer;
+      ">Enable</button>
+      <button onclick="dismissNotifBanner()" style="
+        padding:8px 12px;border-radius:8px;border:1px solid var(--border);
+        background:transparent;color:var(--muted);font-size:13px;cursor:pointer;
+      ">Later</button>
+    </div>
+  </div>
+
   <!-- Sidebar -->
   <aside id="sidebar">
     <div class="sidebar-logo" title="v2.1">2C</div>
@@ -2924,12 +2946,35 @@ function updateSidebarUser() {
     avatarEl.title = "Admin";
   }
 }
+function requestNotifPermission() {
+  if ('Notification' in window) {
+    Notification.requestPermission().then(p => {
+      if (p === 'granted') {
+        toast("Notifications enabled!", "success");
+        new Notification("2ndCall", { body: "You will now receive call and message alerts.", icon: "/static/icons/icon-192.png" });
+      } else {
+        toast("Notifications blocked. Enable in browser settings.", "error");
+      }
+      document.getElementById('notif-banner').classList.add('hidden');
+    });
+  }
+}
+function dismissNotifBanner() {
+  document.getElementById('notif-banner').classList.add('hidden');
+  localStorage.setItem('notif-dismissed', '1');
+}
+
 async function initApp() {
   // Request browser notification permission with visible prompt
   if ('Notification' in window && Notification.permission === 'default') {
     Notification.requestPermission().then(p => {
       if (p === 'granted') toast("Notifications enabled", "success");
     });
+  }
+
+  // Show notification permission banner if not granted
+  if ('Notification' in window && Notification.permission !== 'granted' && !localStorage.getItem('notif-dismissed')) {
+    document.getElementById('notif-banner').classList.remove('hidden');
   }
 
   // Unlock AudioContext on first user interaction (required by mobile browsers)
