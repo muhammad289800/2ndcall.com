@@ -1402,9 +1402,23 @@ def create_app() -> Flask:
     @require_auth
     def list_conversations():
         """Return conversations grouped by contact number, most recent first."""
+        current_user = _get_session_user()
+        uid = current_user["id"] if current_user else None
+        # Get user's numbers for filtering
+        is_admin = _is_admin()
+        user_numbers = set()
+        if uid and not is_admin:
+            for n in storage.list_numbers(user_id=uid):
+                user_numbers.add(n["phone_number"])
         all_msgs = storage.list_message_logs(limit=1000)
         convos: dict[str, dict[str, Any]] = {}
-        for msg in reversed(all_msgs):  # oldest first so last write = most recent
+        for msg in reversed(all_msgs):
+            # Filter: non-admin users only see messages for their numbers
+            if not is_admin:
+                if not user_numbers:
+                    break  # user has no numbers, no conversations to show
+                if msg["from_number"] not in user_numbers and msg["to_number"] not in user_numbers:
+                    continue
             contact = msg["from_number"] if msg["direction"] == "inbound" else msg["to_number"]
             my_num = msg["to_number"] if msg["direction"] == "inbound" else msg["from_number"]
             if contact not in convos:
@@ -1432,11 +1446,18 @@ def create_app() -> Flask:
         contact_number = str(body.get("contact", "")).strip()
         if not contact_number:
             return jsonify({"error": "contact is required"}), 400
+        current_user = _get_session_user()
+        uid = current_user["id"] if current_user else None
+        user_numbers = set()
+        if uid and not _is_admin():
+            for n in storage.list_numbers(user_id=uid):
+                user_numbers.add(n["phone_number"])
         all_msgs = storage.list_message_logs(limit=500)
         thread = [
             m for m in all_msgs
-            if (m["direction"] == "inbound" and m["from_number"] == contact_number)
-            or (m["direction"] == "outbound" and m["to_number"] == contact_number)
+            if ((m["direction"] == "inbound" and m["from_number"] == contact_number)
+            or (m["direction"] == "outbound" and m["to_number"] == contact_number))
+            and (_is_admin() or not user_numbers or m["from_number"] in user_numbers or m["to_number"] in user_numbers)
         ]
         thread.sort(key=lambda x: x["created_at"])
         return jsonify({"messages": thread, "contact": contact_number, "count": len(thread)})
