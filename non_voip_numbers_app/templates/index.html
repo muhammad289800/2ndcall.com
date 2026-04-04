@@ -1997,22 +1997,28 @@ function showOutboundCallUI(toNumber, callId) {
   document.getElementById("call-speaker-btn").style.display = "none";
   document.getElementById("call-hangup-btn").style.display = "";
   // Poll for call status updates
+  let _pollCount = 0;
   _callStatusPollTimer = setInterval(async () => {
+    _pollCount++;
     try {
       const d = await api("/api/calls/active");
       const calls = d.calls || [];
-      if (calls.length === 0) {
-        // Call ended
+      if (calls.length === 0 && _pollCount > 15) {
+        // Only end after 30 seconds (15 polls x 2s) of no active calls
         clearInterval(_callStatusPollTimer);
         updateCallStatus("Call ended");
         setTimeout(endCallUI, 2000);
         return;
       }
-      const c = calls[0];
-      if (c.status === "answered") {
-        updateCallStatus("Connected");
-        document.getElementById("call-timer").style.display = "";
-        if (!_callTimer) startCallTimer();
+      if (calls.length > 0) {
+        const c = calls[0];
+        if (c.status === "answered") {
+          updateCallStatus("Connected");
+          document.getElementById("call-timer").style.display = "";
+          if (!_callTimer) startCallTimer();
+        } else {
+          updateCallStatus("Ringing…");
+        }
       }
     } catch {}
   }, 2000);
@@ -3124,7 +3130,9 @@ function handleRTCNotification(notification) {
     attachRemoteAudio(call);
   } else if (state === "hangup" || state === "destroy" || state === "purge") {
     removeRemoteAudio();
-    endCallUI();
+    // Don't close instantly — show "Call ended" for 2 seconds
+    updateCallStatus("Call ended");
+    setTimeout(endCallUI, 2000);
   } else if (state === "trying" || state === "early" || state === "requesting") {
     updateCallStatus("Ringing…");
   }
@@ -3337,8 +3345,21 @@ function makeWebRTCCall(fromNumber, toNumber) {
       callerNumber: fromNumber,
     });
   } catch(e) {
-    toast("Call failed: " + e.message, "error");
-    endCallUI();
+    toast("WebRTC call failed: " + e.message + ". Trying API call...", "error");
+    // Fallback to API call instead of closing
+    (async () => {
+      try {
+        const provider = (S.numbers.find(n => n.phone_number === fromNumber) || {}).provider || "telnyx";
+        await api("/api/calls/start", { method:"POST", body: JSON.stringify({
+          provider, from_number: fromNumber, to_number: toNumber,
+          say_text: "", estimated_minutes: 1
+        })});
+        showOutboundCallUI(toNumber);
+      } catch(e2) {
+        toast("Call failed: " + e2.message, "error");
+        endCallUI();
+      }
+    })();
   }
 }
 
