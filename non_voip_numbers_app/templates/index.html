@@ -3151,18 +3151,24 @@ function handleRTCNotification(notification) {
     attachRemoteAudio(call);
   } else if (state === "hangup" || state === "destroy" || state === "purge") {
     removeRemoteAudio();
+    // If fallback is in progress, ignore WebRTC hangup events
+    if (_fallbackInProgress) return;
     // If call ended within 5 seconds, WebRTC failed — try API fallback
     if (_webrtcCallStartTime && (Date.now() - _webrtcCallStartTime) < 5000 && _webrtcCallFrom && _webrtcCallTo) {
       const f = _webrtcCallFrom, t = _webrtcCallTo;
       _webrtcCallStartTime = 0; _webrtcCallFrom = ""; _webrtcCallTo = "";
       _activeCall = null;
-      updateCallStatus("Switching to phone bridge…");
+      _fallbackInProgress = true;
+      updateCallStatus("Connecting call…");
       fallbackToAPICall(f, t);
       return;
     }
-    _webrtcCallStartTime = 0;
-    updateCallStatus("Call ended");
-    setTimeout(endCallUI, 2000);
+    // Only close if no fallback running
+    if (!_fallbackInProgress) {
+      _webrtcCallStartTime = 0;
+      updateCallStatus("Call ended");
+      setTimeout(endCallUI, 2000);
+    }
   } else if (state === "trying" || state === "early" || state === "requesting") {
     updateCallStatus("Ringing…");
   }
@@ -3356,6 +3362,7 @@ function showActiveCall(call) {
 let _webrtcCallStartTime = 0;
 let _webrtcCallFrom = "";
 let _webrtcCallTo = "";
+let _fallbackInProgress = false;
 
 function makeWebRTCCall(fromNumber, toNumber) {
   if (!_rtcClient) { toast("WebRTC not initialized.", "error"); return; }
@@ -3387,15 +3394,17 @@ function makeWebRTCCall(fromNumber, toNumber) {
 }
 
 async function fallbackToAPICall(fromNumber, toNumber) {
-  toast("Using phone bridge for audio…", "success");
+  _fallbackInProgress = true;
   try {
     const provider = (S.numbers.find(n => n.phone_number === fromNumber) || {}).provider || "telnyx";
     const personalNum = localStorage.getItem("2c_personal_phone") || "";
     const callBody = { provider, from_number: fromNumber, to_number: toNumber, say_text: "", estimated_minutes: 1 };
     if (personalNum) callBody.personal_number = personalNum;
     await api("/api/calls/start", { method:"POST", body: JSON.stringify(callBody)});
+    _fallbackInProgress = false;
     showOutboundCallUI(toNumber);
   } catch(e2) {
+    _fallbackInProgress = false;
     toast("Call failed: " + e2.message, "error");
     endCallUI();
   }
@@ -3459,6 +3468,10 @@ function endCallUI() {
   _isMuted = false;
   _pendingIncoming = null;
   _callSeconds = 0;
+  _fallbackInProgress = false;
+  _webrtcCallStartTime = 0;
+  _webrtcCallFrom = "";
+  _webrtcCallTo = "";
   loadCalls();
 }
 
