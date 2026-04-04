@@ -1,0 +1,30 @@
+buildscript {
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+apply plugin: 'com.android.library'
+
+android {
+    namespace "cordova.plugins"
+    compileSdk project.hasProperty('compileSdkVersion') ? rootProject.ext.compileSdkVersion : 35
+    defaultConfig {
+        minSdk project.hasProperty('minSdkVersion') ? rootProject.ext.minSdkVersion : 23
+        targetSdk project.hasProperty('targetSdkVersion') ? rootProject.ext.targetSdkVersion : 35
+    }
+    sourceSets {
+        main {
+            java.srcDirs = ['src/main/java']
+            res.srcDirs = ['src/main/res']
+        }
+    }
+}
+
+repositories {
+    google()
+    mavenCentral()
+}
+
+dependencies {
+}
