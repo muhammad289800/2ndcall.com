@@ -1021,9 +1021,10 @@ def create_app() -> Flask:
         provider_id = str(body.get("provider", "mock")).lower()
         from_number = str(body.get("from_number", "")).strip()
         to_number = str(body.get("to_number", "")).strip()
+        personal_number = str(body.get("personal_number", "")).strip()
         say_text = str(body.get("say_text", "")).strip()
         if not from_number or not to_number:
-            return jsonify({"error": "provider, from_number, and to_number are required."}), 400
+            return jsonify({"error": "from_number and to_number are required."}), 400
         try:
             provider = provider_or_400(provider_id)
             estimated_minutes = parse_float(body.get("estimated_minutes"), 1.0)
@@ -1031,15 +1032,26 @@ def create_app() -> Flask:
             current_user = _get_session_user()
             uid = current_user["id"] if current_user else None
             ensure_wallet_can_cover(estimated_cost, provider_id, user_id=uid)
-            result = provider.start_call(from_number, to_number, say_text)
-            # Track that we initiated this call so webhooks don't show it as incoming
+            # If personal number provided, call that first (bridge mode)
+            call_target = personal_number if personal_number else to_number
+            result = provider.start_call(from_number, call_target, say_text)
+            # Track that we initiated this call
             if result.get("id"):
                 _active_calls[result["id"]] = {
                     "call_control_id": result["id"],
                     "from": from_number, "to": to_number,
-                    "direction": "outbound", "status": "ringing",
+                    "direction": "outbound",
+                    "status": "calling_you" if personal_number else "ringing",
+                    "mode": "bridge" if personal_number else "direct",
                 }
                 _our_outbound_numbers.add(to_number)
+                if personal_number:
+                    _our_outbound_numbers.add(personal_number)
+                    _pending_bridges[result["id"]] = {
+                        "from_number": from_number,
+                        "to_number": to_number,
+                        "provider_id": provider_id,
+                    }
             safe_result = {"id": result.get("id"), "status": result.get("status")}
             storage.log_call(
                 provider=provider_id,
@@ -1131,7 +1143,8 @@ def create_app() -> Flask:
     # In-memory store for active incoming calls (for polling by browser)
     _incoming_calls: list[dict[str, Any]] = []
     _active_calls: dict[str, dict[str, Any]] = {}
-    _our_outbound_numbers: set[str] = set()  # track numbers we've called from
+    _our_outbound_numbers: set[str] = set()
+    _pending_bridges: dict[str, dict[str, Any]] = {}  # first_call_id -> bridge info
 
     @app.get("/api/calls/active")
     @require_auth
@@ -1295,21 +1308,66 @@ def create_app() -> Flask:
                     "_ts": _time.time(),
                 }
 
-            # ── Call answered: speak TTS to keep call alive (API calls need this) ──
+            # ── Call answered: bridge or speak TTS ──
             if event_type == "call.answered" and call_control_id:
                 if call_control_id in _active_calls:
                     _active_calls[call_control_id]["status"] = "answered"
-                # Speak greeting to keep the call alive (Telnyx drops silent calls)
-                if api_key and call_control_id in _active_calls:
+
+                # Check if this is part of a bridge (first leg answered)
+                if call_control_id in _pending_bridges and api_key:
+                    bridge = _pending_bridges[call_control_id]
+                    # User answered their phone - now call the recipient
+                    try:
+                        # Tell the user we're connecting
+                        http_requests.post(
+                            f"https://api.telnyx.com/v2/calls/{call_control_id}/actions/speak",
+                            headers=cc_headers,
+                            json={"payload": "Connecting you now. Please hold.", "voice": "female", "language": "en-US"},
+                            timeout=10,
+                        )
+                        # Start the second call to the recipient
+                        tp = providers.get(bridge.get("provider_id", "telnyx"))
+                        if tp:
+                            result2 = tp.start_call(bridge["from_number"], bridge["to_number"], "")
+                            leg2_id = result2.get("id", "")
+                            if leg2_id:
+                                # Store bridge info on second leg too
+                                _pending_bridges[leg2_id] = {
+                                    "bridge_with": call_control_id,
+                                    "leg": "second",
+                                }
+                                _pending_bridges[call_control_id]["leg2_id"] = leg2_id
+                                _active_calls[call_control_id]["status"] = "connecting"
+                                _our_outbound_numbers.add(bridge["to_number"])
+                    except Exception:
+                        pass
+
+                # Check if this is the second leg being answered - bridge the calls
+                elif call_control_id in _pending_bridges and _pending_bridges[call_control_id].get("leg") == "second" and api_key:
+                    bridge = _pending_bridges[call_control_id]
+                    first_call_id = bridge.get("bridge_with", "")
+                    if first_call_id:
+                        try:
+                            # Bridge the two calls together
+                            http_requests.post(
+                                f"https://api.telnyx.com/v2/calls/{first_call_id}/actions/bridge",
+                                headers=cc_headers,
+                                json={"call_control_id": call_control_id},
+                                timeout=10,
+                            )
+                            # Update status
+                            if first_call_id in _active_calls:
+                                _active_calls[first_call_id]["status"] = "bridged"
+                        except Exception:
+                            pass
+
+                # Regular call (no bridge) - speak TTS to keep alive
+                elif api_key and call_control_id in _active_calls and call_control_id not in _pending_bridges:
                     try:
                         http_requests.post(
                             f"https://api.telnyx.com/v2/calls/{call_control_id}/actions/speak",
                             headers=cc_headers,
-                            json={
-                                "payload": "You are now connected through 2nd Call. This call is active.",
-                                "voice": "female",
-                                "language": "en-US",
-                            },
+                            json={"payload": "Connected through 2nd Call.", "voice": "female", "language": "en-US"},
                             timeout=10,
                         )
                     except Exception:

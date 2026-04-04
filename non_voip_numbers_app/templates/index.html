@@ -1082,8 +1082,10 @@
     </div>
     <div class="modal-body" style="flex:1;overflow-y:auto;display:flex;flex-direction:column;">
       <label class="form-label">From (your number)</label>
-      <select class="form-input" id="dp-from" style="margin-bottom:8px;"></select>
-      <input type="tel" inputmode="tel" class="dialpad-display" id="dp-display" placeholder="Enter number" value="" autocomplete="off" />
+      <select class="form-input" id="dp-from" style="margin-bottom:6px;"></select>
+      <label class="form-label">Your phone (for live audio)</label>
+      <input type="tel" inputmode="tel" class="form-input" id="dp-personal" placeholder="Your personal phone number" style="margin-bottom:8px;font-size:13px;" />
+      <input type="tel" inputmode="tel" class="dialpad-display" id="dp-display" placeholder="Number to call" value="" autocomplete="off" />
       <div class="dialpad-grid" id="dialpad-grid"></div>
       <div class="dial-actions" style="padding-bottom:8px;">
         <button type="button" class="dial-clear" id="dp-clear" title="Delete">&#9003;</button>
@@ -1938,6 +1940,9 @@ function openDialpad(prefill = "") {
     `<option value="${esc(n.phone_number)}">${esc(n.phone_number)} (${esc(n.provider)})</option>`
   ).join("") || '<option value="">No numbers available</option>';
   document.getElementById("dp-status").textContent = "";
+  // Restore saved personal number
+  const savedPersonal = localStorage.getItem("2c_personal_phone") || "";
+  document.getElementById("dp-personal").value = savedPersonal;
   document.getElementById("modal-dialpad").classList.remove("hidden");
 }
 
@@ -1970,12 +1975,16 @@ async function handleDialpadCall() {
   // API call with call overlay (used on mobile and when WebRTC unavailable)
   const provider = (S.numbers.find(n => n.phone_number === from) || {}).provider || "telnyx";
   const toNum = dialpadNum;
-  setStatus("dp-status","Placing call…");
+  const personalNum = document.getElementById("dp-personal").value.trim();
+  if (personalNum) localStorage.setItem("2c_personal_phone", personalNum);
+  setStatus("dp-status", personalNum ? "Calling your phone first…" : "Placing call…");
   try {
-    const result = await api("/api/calls/start", { method:"POST", body: JSON.stringify({
+    const callBody = {
       provider, from_number: from, to_number: toNum,
       say_text: "", estimated_minutes: 1
-    })});
+    };
+    if (personalNum) callBody.personal_number = personalNum;
+    const result = await api("/api/calls/start", { method:"POST", body: JSON.stringify(callBody)});
     closeModal("modal-dialpad");
     // Show call overlay
     showOutboundCallUI(toNum, result.call?.id);
@@ -2014,7 +2023,17 @@ function showOutboundCallUI(toNumber, callId) {
       }
       if (calls.length > 0) {
         const c = calls[0];
-        if (c.status === "answered") {
+        if (c.status === "bridged") {
+          updateCallStatus("Connected — Live Audio");
+          document.getElementById("call-timer").style.display = "";
+          document.getElementById("call-mute-btn").style.display = "";
+          document.getElementById("call-hangup-btn").style.display = "";
+          if (!_callTimer) startCallTimer();
+        } else if (c.status === "connecting") {
+          updateCallStatus("Calling recipient…");
+        } else if (c.status === "calling_you") {
+          updateCallStatus("Calling your phone…");
+        } else if (c.status === "answered") {
           updateCallStatus("Connected");
           document.getElementById("call-timer").style.display = "";
           if (!_callTimer) startCallTimer();
