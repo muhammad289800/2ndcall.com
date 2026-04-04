@@ -1959,14 +1959,15 @@ async function handleDialpadCall() {
   const from = document.getElementById("dp-from").value;
   if (!from) { setStatus("dp-status","No number to call from. Get a number first.", true); return; }
 
-  // Try WebRTC first (live call)
-  if (_rtcClient) {
+  // Try WebRTC on desktop only (mobile WebRTC is unreliable)
+  const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+  if (_rtcClient && !isMobile) {
     closeModal("modal-dialpad");
     makeWebRTCCall(from, dialpadNum);
     return;
   }
 
-  // API call with call overlay
+  // API call with call overlay (used on mobile and when WebRTC unavailable)
   const provider = (S.numbers.find(n => n.phone_number === from) || {}).provider || "telnyx";
   const toNum = dialpadNum;
   setStatus("dp-status","Placing call…");
@@ -1996,8 +1997,9 @@ function showOutboundCallUI(toNumber, callId) {
   document.getElementById("call-mute-btn").style.display = "none";
   document.getElementById("call-speaker-btn").style.display = "none";
   document.getElementById("call-hangup-btn").style.display = "";
-  // Poll for call status updates
+  // Poll for call status updates (start after 5s to let webhook register)
   let _pollCount = 0;
+  setTimeout(() => {
   _callStatusPollTimer = setInterval(async () => {
     _pollCount++;
     try {
@@ -2021,7 +2023,8 @@ function showOutboundCallUI(toNumber, callId) {
         }
       }
     } catch {}
-  }, 2000);
+  }, 3000);
+  }, 5000);
 }
 let _callStatusPollTimer = null;
 
