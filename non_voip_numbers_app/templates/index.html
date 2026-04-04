@@ -3395,19 +3395,20 @@ function makeWebRTCCall(fromNumber, toNumber) {
 
 async function fallbackToAPICall(fromNumber, toNumber) {
   _fallbackInProgress = true;
+  const provider = (S.numbers.find(n => n.phone_number === fromNumber) || {}).provider || "telnyx";
+  const personalNum = localStorage.getItem("2c_personal_phone") || "";
+  const callBody = { provider, from_number: fromNumber, to_number: toNumber, say_text: "", estimated_minutes: 1 };
+  if (personalNum) callBody.personal_number = personalNum;
   try {
-    const provider = (S.numbers.find(n => n.phone_number === fromNumber) || {}).provider || "telnyx";
-    const personalNum = localStorage.getItem("2c_personal_phone") || "";
-    const callBody = { provider, from_number: fromNumber, to_number: toNumber, say_text: "", estimated_minutes: 1 };
-    if (personalNum) callBody.personal_number = personalNum;
     await api("/api/calls/start", { method:"POST", body: JSON.stringify(callBody)});
-    _fallbackInProgress = false;
-    showOutboundCallUI(toNumber);
   } catch(e2) {
-    _fallbackInProgress = false;
-    toast("Call failed: " + e2.message, "error");
-    endCallUI();
+    // Call might have gone through even if API response fails
+    // Don't close overlay — show status and let poll timer check
+    console.warn("Call API error (call may still connect):", e2.message);
   }
+  // Always show the overlay regardless of API response
+  // Keep _fallbackInProgress true to block WebRTC hangup events
+  showOutboundCallUI(toNumber);
 }
 
 async function hangupCall() {
