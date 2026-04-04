@@ -1964,9 +1964,8 @@ async function handleDialpadCall() {
   const from = document.getElementById("dp-from").value;
   if (!from) { setStatus("dp-status","No number to call from. Get a number first.", true); return; }
 
-  // Try WebRTC on desktop only (mobile WebRTC is unreliable)
-  const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-  if (_rtcClient && !isMobile) {
+  // Try WebRTC first (live call — works on both desktop and mobile)
+  if (_rtcClient) {
     closeModal("modal-dialpad");
     makeWebRTCCall(from, dialpadNum);
     return;
