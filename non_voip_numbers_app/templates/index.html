@@ -1964,7 +1964,14 @@ async function handleDialpadCall() {
   const from = document.getElementById("dp-from").value;
   if (!from) { setStatus("dp-status","No number to call from. Get a number first.", true); return; }
 
-  // Try WebRTC first (live call — works on both desktop and mobile)
+  // Try Native VoIP first (Android app — best audio quality)
+  if (_nativeVoIPReady && typeof NativeVoIP !== 'undefined') {
+    closeModal("modal-dialpad");
+    makeNativeVoIPCall(from, dialpadNum);
+    return;
+  }
+
+  // Try WebRTC second (desktop browser)
   if (_rtcClient) {
     closeModal("modal-dialpad");
     makeWebRTCCall(from, dialpadNum);
@@ -3069,7 +3076,8 @@ async function initApp() {
     refreshAllFromSelects();
     loadCalls();
     startAutoRefresh();
-    // Initialize WebRTC for live calls
+    // Initialize calling - Native VoIP (Android app) or WebRTC (browser)
+    initNativeVoIP();
     initWebRTC().catch(() => {});
   } catch(e) {
     toast("Failed to load app data: " + e.message, "error");
@@ -3308,6 +3316,10 @@ function showIncomingCall(call) {
 
 function answerIncoming() {
   stopSound();
+  // Native VoIP answer
+  if (typeof NativeVoIP !== 'undefined') {
+    try { NativeVoIP.answer(); } catch {}
+  }
   // WebRTC answer
   if (_activeCall && _activeCall.answer) {
     _activeCall.answer();
@@ -3363,6 +3375,90 @@ let _webrtcCallStartTime = 0;
 let _webrtcCallFrom = "";
 let _webrtcCallTo = "";
 let _fallbackInProgress = false;
+let _nativeVoIPReady = false;
+
+// ── Native VoIP Bridge (Android app only) ──
+function initNativeVoIP() {
+  if (typeof NativeVoIP === 'undefined') return;
+  console.log("[NativeVoIP] Bridge detected");
+  // Login with SIP credentials
+  api("/api/webrtc/token").then(d => {
+    if (d.sip_username && d.sip_password) {
+      NativeVoIP.login(d.sip_username, d.sip_password);
+    } else if (d.login_token) {
+      // JWT token — can't use with native SDK directly
+      console.log("[NativeVoIP] JWT token not supported for native, using SIP");
+    }
+  }).catch(e => console.warn("[NativeVoIP] Token fetch failed:", e.message));
+}
+
+// Callback from native VoIP bridge
+window.onNativeVoIPEvent = function(event, data) {
+  console.log("[NativeVoIP] Event:", event, data);
+  switch (event) {
+    case 'ready':
+      _nativeVoIPReady = true;
+      toast("Native calling ready", "success");
+      break;
+    case 'incoming':
+      playSound('ring');
+      showIncomingCallFromWebhook({from: data, to: '', call_control_id: 'native'});
+      showNotification('Incoming Call', 'Call from ' + data, 'call');
+      break;
+    case 'calling':
+      updateCallStatus("Calling…");
+      break;
+    case 'state':
+      if (data === 'active') {
+        stopSound();
+        updateCallStatus("Connected — Live Audio");
+        document.getElementById("call-timer").style.display = "";
+        document.getElementById("call-mute-btn").style.display = "";
+        document.getElementById("call-hangup-btn").style.display = "";
+        startCallTimer();
+      } else if (data === 'ringing') {
+        updateCallStatus("Ringing…");
+      } else if (data === 'done') {
+        stopSound();
+        updateCallStatus("Call ended");
+        setTimeout(endCallUI, 2000);
+      } else if (data === 'connecting') {
+        updateCallStatus("Connecting…");
+      }
+      break;
+    case 'answered':
+      stopSound();
+      break;
+    case 'hangup':
+      stopSound();
+      updateCallStatus("Call ended");
+      setTimeout(endCallUI, 1500);
+      break;
+    case 'error':
+      toast("VoIP: " + data, "error");
+      break;
+    case 'mute':
+      document.getElementById("call-mute-btn").style.background = data === 'true' ? 'var(--red)' : 'var(--surface2)';
+      break;
+  }
+};
+
+function makeNativeVoIPCall(fromNumber, toNumber) {
+  const name = contactName(toNumber);
+  const overlay = document.getElementById("call-overlay");
+  overlay.classList.remove("hidden");
+  document.getElementById("call-avatar").style.background = avatarColor(toNumber);
+  document.getElementById("call-avatar").textContent = avatarText(toNumber);
+  document.getElementById("call-contact-name").textContent = name;
+  document.getElementById("call-contact-number").textContent = toNumber;
+  updateCallStatus("Calling…");
+  document.getElementById("call-timer").style.display = "none";
+  document.getElementById("call-incoming-actions").classList.add("hidden");
+  document.getElementById("call-mute-btn").style.display = "";
+  document.getElementById("call-speaker-btn").style.display = "";
+  document.getElementById("call-hangup-btn").style.display = "";
+  NativeVoIP.call(toNumber, fromNumber);
+}
 
 function makeWebRTCCall(fromNumber, toNumber) {
   if (!_rtcClient) { toast("WebRTC not initialized.", "error"); return; }
@@ -3412,6 +3508,10 @@ async function fallbackToAPICall(fromNumber, toNumber) {
 }
 
 async function hangupCall() {
+  // Native VoIP hangup
+  if (typeof NativeVoIP !== 'undefined') {
+    try { NativeVoIP.hangup(); } catch {}
+  }
   if (_activeCall) {
     try { _activeCall.hangup(); } catch {}
     _activeCall = null;
@@ -3427,20 +3527,27 @@ async function hangupCall() {
 }
 
 function toggleMute() {
-  if (!_activeCall) return;
   _isMuted = !_isMuted;
-  try {
-    if (_isMuted) { _activeCall.muteAudio(); } else { _activeCall.unmuteAudio(); }
-  } catch {}
+  // Native VoIP mute
+  if (typeof NativeVoIP !== 'undefined') {
+    try { NativeVoIP.mute(); } catch {}
+  }
+  // WebRTC mute
+  if (_activeCall) {
+    try { if (_isMuted) { _activeCall.muteAudio(); } else { _activeCall.unmuteAudio(); } } catch {}
+  }
   const btn = document.getElementById("call-mute-btn");
   btn.style.background = _isMuted ? "var(--red)" : "var(--surface2)";
   btn.style.color = _isMuted ? "white" : "var(--text)";
 }
 
 function toggleSpeaker() {
-  // Browser doesn't have speaker toggle — visual only
   const btn = document.getElementById("call-speaker-btn");
   const on = btn.style.background === "var(--accent)";
+  // Native VoIP speaker
+  if (typeof NativeVoIP !== 'undefined') {
+    try { NativeVoIP.speaker(!on); } catch {}
+  }
   btn.style.background = on ? "var(--surface2)" : "var(--accent)";
   btn.style.color = on ? "var(--text)" : "white";
 }
