@@ -4,27 +4,16 @@
   "webDir": "www",
   "server": {
     "url": "https://2ndcallcom-production-dcdb.up.railway.app",
-    "cleartext": false
+    "cleartext": false,
+    "androidScheme": "https"
   },
   "android": {
     "allowMixedContent": false,
-    "backgroundColor": "#0a0e14",
-    "overrideUserAgent": "2ndCall-App/1.0",
-    "appendUserAgent": "2ndCall-NativeApp"
+    "backgroundColor": "#0a0e14"
   },
   "ios": {
     "backgroundColor": "#0a0e14",
-    "overrideUserAgent": "2ndCall-App/1.0",
-    "appendUserAgent": "2ndCall-NativeApp",
     "contentInset": "always",
     "scheme": "2ndcall"
-  },
-  "plugins": {
-    "SplashScreen": {
-      "launchShowDuration": 2000,
-      "backgroundColor": "#0a0e14",
-      "showSpinner": false,
-      "androidScaleType": "CENTER_CROP"
-    }
   }
 }

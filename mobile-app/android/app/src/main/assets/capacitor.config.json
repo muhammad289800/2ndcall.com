@@ -1,0 +1,19 @@
+{
+	"appId": "com.secondcall.app",
+	"appName": "2ndCall",
+	"webDir": "www",
+	"server": {
+		"url": "https://2ndcallcom-production-dcdb.up.railway.app",
+		"cleartext": false,
+		"androidScheme": "https"
+	},
+	"android": {
+		"allowMixedContent": false,
+		"backgroundColor": "#0a0e14"
+	},
+	"ios": {
+		"backgroundColor": "#0a0e14",
+		"contentInset": "always",
+		"scheme": "2ndcall"
+	}
+}
