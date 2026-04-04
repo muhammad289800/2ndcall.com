@@ -1032,9 +1032,16 @@ def create_app() -> Flask:
             current_user = _get_session_user()
             uid = current_user["id"] if current_user else None
             ensure_wallet_can_cover(estimated_cost, provider_id, user_id=uid)
-            # If personal number provided, call that first (bridge mode)
-            call_target = personal_number if personal_number else to_number
-            result = provider.start_call(from_number, call_target, say_text)
+            # If personal number provided, use bridge mode for live audio
+            if personal_number and hasattr(provider, 'start_bridged_call'):
+                # SignalWire: single TwiML call that bridges automatically
+                result = provider.start_bridged_call(from_number, personal_number, to_number)
+            elif personal_number:
+                # Telnyx: call personal number first, bridge via webhook
+                result = provider.start_call(from_number, personal_number, say_text)
+            else:
+                # Direct call (no bridge)
+                result = provider.start_call(from_number, to_number, say_text)
             # Track that we initiated this call
             if result.get("id"):
                 _active_calls[result["id"]] = {

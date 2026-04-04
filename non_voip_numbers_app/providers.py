@@ -819,6 +819,24 @@ class SignalWireProvider(BaseProvider):
         )
         return {"id": payload.get("sid"), "status": payload.get("status"), "raw": payload}
 
+    def start_bridged_call(self, from_number: str, personal_number: str, to_number: str) -> dict[str, Any]:
+        """Call personal_number first, then bridge to to_number using TwiML <Dial>."""
+        twiml = (
+            f"<Response>"
+            f"<Say>Connecting you now. Please hold.</Say>"
+            f"<Dial callerId='{from_number}' timeout='30'>"
+            f"<Number>{to_number}</Number>"
+            f"</Dial>"
+            f"<Say>The call has ended. Goodbye.</Say>"
+            f"</Response>"
+        )
+        payload = self._request(
+            "POST",
+            f"/Accounts/{self.project_id}/Calls.json",
+            data={"From": from_number, "To": personal_number, "Twiml": twiml},
+        )
+        return {"id": payload.get("sid"), "status": payload.get("status"), "raw": payload}
+
     def pricing_profile(self) -> dict[str, Any]:
         return {
             "number_monthly_usd": 0.50,
