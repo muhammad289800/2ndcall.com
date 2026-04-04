@@ -3151,7 +3151,16 @@ function handleRTCNotification(notification) {
     attachRemoteAudio(call);
   } else if (state === "hangup" || state === "destroy" || state === "purge") {
     removeRemoteAudio();
-    // Don't close instantly — show "Call ended" for 2 seconds
+    // If call ended within 5 seconds, WebRTC failed — try API fallback
+    if (_webrtcCallStartTime && (Date.now() - _webrtcCallStartTime) < 5000 && _webrtcCallFrom && _webrtcCallTo) {
+      const f = _webrtcCallFrom, t = _webrtcCallTo;
+      _webrtcCallStartTime = 0; _webrtcCallFrom = ""; _webrtcCallTo = "";
+      _activeCall = null;
+      updateCallStatus("Switching to phone bridge…");
+      fallbackToAPICall(f, t);
+      return;
+    }
+    _webrtcCallStartTime = 0;
     updateCallStatus("Call ended");
     setTimeout(endCallUI, 2000);
   } else if (state === "trying" || state === "early" || state === "requesting") {
@@ -3344,8 +3353,15 @@ function showActiveCall(call) {
   startCallTimer();
 }
 
+let _webrtcCallStartTime = 0;
+let _webrtcCallFrom = "";
+let _webrtcCallTo = "";
+
 function makeWebRTCCall(fromNumber, toNumber) {
-  if (!_rtcClient) { toast("WebRTC not initialized. Refresh and try again.", "error"); return; }
+  if (!_rtcClient) { toast("WebRTC not initialized.", "error"); return; }
+  _webrtcCallFrom = fromNumber;
+  _webrtcCallTo = toNumber;
+  _webrtcCallStartTime = Date.now();
   const name = contactName(toNumber);
   const overlay = document.getElementById("call-overlay");
   overlay.classList.remove("hidden");
@@ -3366,21 +3382,22 @@ function makeWebRTCCall(fromNumber, toNumber) {
       callerNumber: fromNumber,
     });
   } catch(e) {
-    toast("WebRTC call failed: " + e.message + ". Trying API call...", "error");
-    // Fallback to API call instead of closing
-    (async () => {
-      try {
-        const provider = (S.numbers.find(n => n.phone_number === fromNumber) || {}).provider || "telnyx";
-        await api("/api/calls/start", { method:"POST", body: JSON.stringify({
-          provider, from_number: fromNumber, to_number: toNumber,
-          say_text: "", estimated_minutes: 1
-        })});
-        showOutboundCallUI(toNumber);
-      } catch(e2) {
-        toast("Call failed: " + e2.message, "error");
-        endCallUI();
-      }
-    })();
+    fallbackToAPICall(fromNumber, toNumber);
+  }
+}
+
+async function fallbackToAPICall(fromNumber, toNumber) {
+  toast("Using phone bridge for audio…", "success");
+  try {
+    const provider = (S.numbers.find(n => n.phone_number === fromNumber) || {}).provider || "telnyx";
+    const personalNum = localStorage.getItem("2c_personal_phone") || "";
+    const callBody = { provider, from_number: fromNumber, to_number: toNumber, say_text: "", estimated_minutes: 1 };
+    if (personalNum) callBody.personal_number = personalNum;
+    await api("/api/calls/start", { method:"POST", body: JSON.stringify(callBody)});
+    showOutboundCallUI(toNumber);
+  } catch(e2) {
+    toast("Call failed: " + e2.message, "error");
+    endCallUI();
   }
 }
 
