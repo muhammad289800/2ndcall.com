@@ -1592,6 +1592,7 @@ document.getElementById("thread-back").addEventListener("click", closeMobileThre
 async function loadConversations() {
   const d = await api("/api/conversations");
   S.conversations = d.conversations || [];
+  detectNewMessages(S.conversations);
   renderConversations();
   updateUnreadBadge();
 }
@@ -2808,6 +2809,94 @@ document.querySelectorAll(".copy-btn").forEach(btn => {
 });
 
 // ════════════════════════════════════════════
+//  SOUNDS & NOTIFICATIONS (Web Audio API)
+// ════════════════════════════════════════════
+let _audioCtx = null;
+let _soundOsc = null;
+let _soundGain = null;
+let _soundInterval = null;
+
+function getAudioCtx() {
+  if (!_audioCtx) _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (_audioCtx.state === 'suspended') _audioCtx.resume();
+  return _audioCtx;
+}
+
+function playSound(type) {
+  stopSound();
+  const ctx = getAudioCtx();
+  _soundGain = ctx.createGain();
+  _soundGain.connect(ctx.destination);
+  _soundGain.gain.value = 0.3;
+
+  if (type === 'ring') {
+    // Alternating 440Hz/480Hz ring, 1s on / 1s off
+    function startRingCycle() {
+      if (_soundOsc) { try { _soundOsc.stop(); } catch(e) {} }
+      const osc = ctx.createOscillator();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(440, ctx.currentTime);
+      osc.frequency.setValueAtTime(480, ctx.currentTime + 0.5);
+      osc.connect(_soundGain);
+      osc.start();
+      osc.stop(ctx.currentTime + 1);
+      _soundOsc = osc;
+    }
+    startRingCycle();
+    _soundInterval = setInterval(startRingCycle, 2000);
+  } else if (type === 'message') {
+    const osc = ctx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.value = 880;
+    osc.connect(_soundGain);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.2);
+    _soundOsc = osc;
+  } else if (type === 'connected') {
+    const osc = ctx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.value = 660;
+    osc.connect(_soundGain);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.3);
+    _soundOsc = osc;
+  }
+}
+
+function stopSound() {
+  if (_soundInterval) { clearInterval(_soundInterval); _soundInterval = null; }
+  if (_soundOsc) { try { _soundOsc.stop(); } catch(e) {} _soundOsc = null; }
+  if (_soundGain) { try { _soundGain.disconnect(); } catch(e) {} _soundGain = null; }
+}
+
+function showNotification(title, body, tag) {
+  if ('Notification' in window && Notification.permission === 'granted') {
+    new Notification(title, { body: body, tag: tag, icon: '/static/icons/icon-192.png', badge: '/static/icons/icon-192.png' });
+  }
+}
+
+let _prevConvoState = {};
+
+function detectNewMessages(conversations) {
+  const newState = {};
+  (conversations || []).forEach(c => {
+    newState[c.contact] = c.last_time;
+    const prev = _prevConvoState[c.contact];
+    if (c.last_direction === 'inbound' && prev && c.last_time !== prev) {
+      playSound('message');
+      const name = contactName(c.contact);
+      const preview = c.last_body || '';
+      showNotification('New Message', (name !== c.contact ? name + ': ' : '') + preview, 'msg-' + c.contact);
+    }
+  });
+  // On first load, just record state without alerting
+  if (Object.keys(_prevConvoState).length > 0 || conversations.length === 0) {
+    // already initialized or empty
+  }
+  _prevConvoState = newState;
+}
+
+// ════════════════════════════════════════════
 //  AUTO-REFRESH
 // ════════════════════════════════════════════
 function startAutoRefresh() {
@@ -2836,6 +2925,10 @@ function updateSidebarUser() {
   }
 }
 async function initApp() {
+  // Request browser notification permission
+  if ('Notification' in window && Notification.permission === 'default') {
+    Notification.requestPermission();
+  }
   buildDialpad();
   // Render webhook URLs immediately
   const base = window.location.origin;
@@ -3060,6 +3153,8 @@ function showIncomingCallFromWebhook(ic) {
   document.getElementById("call-incoming-actions").style.display = "flex";
   // Play ringtone indication via status
   updateCallStatus("Incoming call…");
+  playSound('ring');
+  showNotification('Incoming Call', 'Call from ' + from, 'call');
 }
 
 function showIncomingCall(call) {
@@ -3079,9 +3174,11 @@ function showIncomingCall(call) {
   document.getElementById("call-hangup-btn").style.display = "none";
   document.getElementById("call-incoming-actions").classList.remove("hidden");
   document.getElementById("call-incoming-actions").style.display = "flex";
+  playSound('ring');
 }
 
 function answerIncoming() {
+  stopSound();
   // WebRTC answer
   if (_activeCall && _activeCall.answer) {
     _activeCall.answer();
@@ -3104,6 +3201,7 @@ function answerIncoming() {
 }
 
 function declineIncoming() {
+  stopSound();
   if (_activeCall && _activeCall.hangup) _activeCall.hangup();
   // API hangup for webhook-detected calls
   if (_pendingIncoming && _pendingIncoming.call_control_id) {
@@ -3119,6 +3217,8 @@ function declineIncoming() {
 
 function showActiveCall(call) {
   if (call) _activeCall = call;
+  stopSound();
+  playSound('connected');
   const overlay = document.getElementById("call-overlay");
   overlay.classList.remove("hidden");
   document.getElementById("call-incoming-actions").classList.add("hidden");
@@ -3207,6 +3307,7 @@ function startCallTimer() {
 }
 
 function endCallUI() {
+  stopSound();
   document.getElementById("call-overlay").classList.add("hidden");
   if (_callTimer) { clearInterval(_callTimer); _callTimer = null; }
   if (_callStatusPollTimer) { clearInterval(_callStatusPollTimer); _callStatusPollTimer = null; }

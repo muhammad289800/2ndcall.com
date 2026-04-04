@@ -24,6 +24,12 @@ self.addEventListener("activate", (e) => {
   self.clients.claim();
 });
 
+// Notification click — open the app
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  event.waitUntil(clients.openWindow('/app'));
+});
+
 // Fetch — network-first for API, cache-first for static assets
 self.addEventListener("fetch", (e) => {
   const url = new URL(e.request.url);
