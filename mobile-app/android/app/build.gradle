@@ -38,7 +38,7 @@ dependencies {
     implementation project(':capacitor-android')
 
     // Telnyx VoIP SDK for native calling
-    implementation 'com.telnyx.webrtc:telnyx-android-sdk:1.3.2'
+    implementation 'com.telnyx:telnyx-android-sdk:1.3.2'
 
     // Required for VoIP
     implementation 'com.google.code.gson:gson:2.10.1'
