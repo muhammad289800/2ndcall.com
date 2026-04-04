@@ -654,7 +654,7 @@
   <!-- Login card -->
   <div class="login-card animate-in" id="login-card">
     <div class="login-logo">2nd<span>Call</span></div>
-    <div class="login-sub">Virtual Phone — Sign in to continue</div>
+    <div class="login-sub">Virtual Phone — Sign in to continue <span style="font-size:10px;color:var(--muted2);">v2.1</span></div>
 
     <div style="display:flex;background:var(--surface2);border-radius:10px;padding:3px;margin-bottom:20px;gap:3px;">
       <button id="tab-email-btn" onclick="switchAuthTab('email')"
@@ -709,7 +709,7 @@
 
   <!-- Sidebar -->
   <aside id="sidebar">
-    <div class="sidebar-logo">2C</div>
+    <div class="sidebar-logo" title="v2.1">2C</div>
     <div id="sidebar-user-avatar" class="avatar" style="width:32px;height:32px;font-size:12px;cursor:pointer;margin-bottom:4px;" data-nav="profile" title="My Profile">?</div>
 
     <div class="nav-item active" data-nav="chats" title="Messages">
@@ -3322,7 +3322,17 @@ function endCallUI() {
 //  PWA SERVICE WORKER
 // ════════════════════════════════════════════
 if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.register("/sw.js").catch(() => {});
+  // Force clear old service worker caches on first load of new version
+  if (navigator.serviceWorker) {
+    navigator.serviceWorker.getRegistrations().then(regs => {
+      regs.forEach(r => r.unregister());
+    });
+    caches.keys().then(keys => {
+      keys.forEach(k => caches.delete(k));
+    });
+    // Re-register fresh service worker
+    navigator.serviceWorker.register("/sw.js").catch(() => {});
+  }
 }
 
 // ════════════════════════════════════════════
