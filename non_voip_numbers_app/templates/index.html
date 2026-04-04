@@ -707,28 +707,6 @@
 <!-- ── App ── -->
 <div id="app" class="hidden">
 
-  <!-- Notification permission banner -->
-  <div id="notif-banner" class="hidden" style="
-    position:fixed;top:0;left:0;right:0;z-index:900;
-    background:linear-gradient(135deg,#1a3a6e,#0f2447);
-    border-bottom:1px solid rgba(79,143,255,.2);
-    padding:12px 20px;display:flex;align-items:center;justify-content:space-between;gap:12px;
-  ">
-    <div style="font-size:13px;color:var(--text);">
-      <strong>Enable notifications</strong> to get alerts for calls and messages
-    </div>
-    <div style="display:flex;gap:8px;">
-      <button id="notif-enable-btn" onclick="requestNotifPermission()" style="
-        padding:8px 16px;border-radius:8px;border:none;
-        background:var(--accent);color:white;font-size:13px;font-weight:600;cursor:pointer;
-      ">Enable</button>
-      <button onclick="dismissNotifBanner()" style="
-        padding:8px 12px;border-radius:8px;border:1px solid var(--border);
-        background:transparent;color:var(--muted);font-size:13px;cursor:pointer;
-      ">Later</button>
-    </div>
-  </div>
-
   <!-- Sidebar -->
   <aside id="sidebar">
     <div class="sidebar-logo" title="v2.1">2C</div>
@@ -1511,6 +1489,41 @@ function showApp() {
   document.getElementById("login-screen").style.display = "none";
   document.getElementById("app").classList.remove("hidden");
   initApp();
+  // Show notification prompt if not granted
+  setTimeout(() => {
+    if ('Notification' in window && Notification.permission === 'default' && !localStorage.getItem('notif-asked')) {
+      showNotifPrompt();
+    }
+  }, 2000);
+}
+
+function showNotifPrompt() {
+  const el = document.createElement('div');
+  el.id = 'notif-prompt';
+  el.style.cssText = 'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);z-index:999;background:linear-gradient(135deg,#1a3a6e,#0f2447);border:1px solid rgba(79,143,255,.3);border-radius:16px;padding:16px 20px;display:flex;align-items:center;gap:12px;box-shadow:0 8px 32px rgba(0,0,0,.4);max-width:360px;width:90%;';
+  el.innerHTML = '<div style="flex:1;"><div style="font-size:14px;font-weight:600;color:white;margin-bottom:4px;">Enable Notifications?</div><div style="font-size:12px;color:rgba(255,255,255,.6);">Get alerts for incoming calls and messages</div></div><button onclick="enableNotifs()" style="padding:8px 16px;border-radius:8px;border:none;background:#4f8fff;color:white;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap;">Enable</button><button onclick="this.parentElement.remove();localStorage.setItem(\'notif-asked\',\'1\')" style="padding:8px;border-radius:8px;border:none;background:transparent;color:rgba(255,255,255,.4);font-size:16px;cursor:pointer;">✕</button>';
+  document.body.appendChild(el);
+}
+
+function enableNotifs() {
+  const el = document.getElementById('notif-prompt');
+  if (el) el.remove();
+  localStorage.setItem('notif-asked', '1');
+  if ('Notification' in window) {
+    Notification.requestPermission().then(p => {
+      if (p === 'granted') {
+        toast("Notifications enabled!", "success");
+        try { new Notification("2ndCall", { body: "You'll receive call and message alerts.", icon: "/static/icons/icon-192.png" }); } catch(e) {}
+      } else {
+        toast("Notifications blocked by browser", "error");
+      }
+    });
+  }
+  // Also unlock audio
+  try {
+    if (!_audioCtx) _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    _audioCtx.resume();
+  } catch(e) {}
 }
 
 // Email login
