@@ -1295,10 +1295,25 @@ def create_app() -> Flask:
                     "_ts": _time.time(),
                 }
 
-            # ── Call answered: update status (no TTS — let WebRTC handle audio) ──
+            # ── Call answered: speak TTS to keep call alive (API calls need this) ──
             if event_type == "call.answered" and call_control_id:
                 if call_control_id in _active_calls:
                     _active_calls[call_control_id]["status"] = "answered"
+                # Speak greeting to keep the call alive (Telnyx drops silent calls)
+                if api_key and call_control_id in _active_calls:
+                    try:
+                        http_requests.post(
+                            f"https://api.telnyx.com/v2/calls/{call_control_id}/actions/speak",
+                            headers=cc_headers,
+                            json={
+                                "payload": "You are now connected through 2nd Call. This call is active.",
+                                "voice": "female",
+                                "language": "en-US",
+                            },
+                            timeout=10,
+                        )
+                    except Exception:
+                        pass
 
             # ── Call hangup: clean up ──
             if event_type == "call.hangup" and call_control_id:
