@@ -3,6 +3,7 @@ import random
 import uuid
 from typing import Any
 from urllib.parse import quote
+from xml.sax.saxutils import escape as xml_escape
 
 import requests
 
@@ -298,7 +299,8 @@ class TwilioProvider(BaseProvider):
         return {"id": payload.get("sid"), "status": payload.get("status"), "raw": payload}
 
     def start_call(self, from_number: str, to_number: str, say_text: str) -> dict[str, Any]:
-        twiml = f"<Response><Say>{say_text or 'This is a test call from your number management app.'}</Say></Response>"
+        safe_text = xml_escape(say_text) if say_text else 'This is a test call from your number management app.'
+        twiml = f"<Response><Say>{safe_text}</Say></Response>"
         payload = self._request(
             "POST",
             f"/Accounts/{self.account_sid}/Calls.json",
@@ -833,7 +835,8 @@ class SignalWireProvider(BaseProvider):
         return {"id": payload.get("sid"), "status": payload.get("status"), "raw": payload}
 
     def start_call(self, from_number: str, to_number: str, say_text: str) -> dict[str, Any]:
-        twiml = f"<Response><Say>{say_text or 'Connected through 2nd Call.'}</Say></Response>"
+        safe_text = xml_escape(say_text) if say_text else 'Connected through 2nd Call.'
+        twiml = f"<Response><Say>{safe_text}</Say></Response>"
         payload = self._request(
             "POST",
             f"/Accounts/{self.project_id}/Calls.json",
@@ -843,11 +846,13 @@ class SignalWireProvider(BaseProvider):
 
     def start_bridged_call(self, from_number: str, personal_number: str, to_number: str) -> dict[str, Any]:
         """Call personal_number first, then bridge to to_number using TwiML <Dial>."""
+        safe_from = xml_escape(from_number)
+        safe_to = xml_escape(to_number)
         twiml = (
             f"<Response>"
             f"<Say>Connecting you now. Please hold.</Say>"
-            f"<Dial callerId='{from_number}' timeout='30'>"
-            f"<Number>{to_number}</Number>"
+            f"<Dial callerId='{safe_from}' timeout='30'>"
+            f"<Number>{safe_to}</Number>"
             f"</Dial>"
             f"<Say>The call has ended. Goodbye.</Say>"
             f"</Response>"

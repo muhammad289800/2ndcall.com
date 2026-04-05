@@ -1,8 +1,13 @@
 import functools
+import hashlib
+import hmac
 import os
+import time
 import uuid
+from collections import defaultdict
 from pathlib import Path
 from typing import Any
+from xml.sax.saxutils import escape as xml_escape
 
 import requests as http_requests
 from flask import Flask, Response, jsonify, render_template, request, send_from_directory, session
@@ -43,7 +48,19 @@ def create_app() -> Flask:
     load_local_env()
     app = Flask(__name__)
     app.json.sort_keys = False
-    app.secret_key = os.environ.get("SECRET_KEY", os.urandom(32).hex())
+    _secret = os.environ.get("SECRET_KEY", "").strip()
+    if not _secret:
+        import warnings
+        warnings.warn(
+            "SECRET_KEY is not set! Sessions will be lost on every restart. "
+            "Set SECRET_KEY in your environment for production.",
+            stacklevel=2,
+        )
+        _secret = os.urandom(32).hex()
+    app.secret_key = _secret
+    app.config["SESSION_COOKIE_HTTPONLY"] = True
+    app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+    app.config["SESSION_COOKIE_SECURE"] = os.environ.get("FLASK_ENV") == "production" or os.environ.get("RAILWAY_ENVIRONMENT") is not None
 
     # Prevent caching of HTML pages so updates are always served fresh
     @app.after_request
@@ -56,6 +73,28 @@ def create_app() -> Flask:
 
     storage = Storage()
     providers = build_providers()
+
+    # ── Rate limiting ───────────────────────────────────────────────────────
+
+    _rate_limit_store: dict[str, list[float]] = defaultdict(list)
+
+    def _rate_limit(key: str, max_attempts: int, window_seconds: int) -> bool:
+        """Return True if rate limit exceeded."""
+        now = time.time()
+        attempts = _rate_limit_store[key]
+        # Prune old entries
+        _rate_limit_store[key] = [t for t in attempts if now - t < window_seconds]
+        if len(_rate_limit_store[key]) >= max_attempts:
+            return True
+        _rate_limit_store[key].append(now)
+        return False
+
+    def _check_auth_rate_limit():
+        """Check rate limit for auth endpoints (10 attempts per minute per IP)."""
+        ip = request.remote_addr or "unknown"
+        if _rate_limit(f"auth:{ip}", max_attempts=10, window_seconds=60):
+            return jsonify({"error": "Too many attempts. Please wait a minute."}), 429
+        return None
 
     # ── Auth helpers ─────────────────────────────────────────────────────────
 
@@ -209,12 +248,16 @@ def create_app() -> Flask:
 
     @app.errorhandler(500)
     def internal_error(e):
-        return jsonify({"error": "Internal server error.", "detail": str(e)}), 500
+        app.logger.error("Internal server error: %s", e)
+        return jsonify({"error": "Internal server error."}), 500
 
     # ── Auth / User routes ───────────────────────────────────────────────────
 
     @app.post("/api/auth/register")
     def api_register():
+        limited = _check_auth_rate_limit()
+        if limited:
+            return limited
         body = payload()
         email = str(body.get("email", "")).strip().lower()
         name = str(body.get("name", "")).strip()
@@ -234,6 +277,9 @@ def create_app() -> Flask:
 
     @app.post("/api/auth/login")
     def api_login():
+        limited = _check_auth_rate_limit()
+        if limited:
+            return limited
         body = payload()
         # Admin token login
         token = str(body.get("token", "")).strip()
@@ -1133,8 +1179,51 @@ def create_app() -> Flask:
             )
             return jsonify({"error": str(exc)}), 400
 
+    # ── Webhook verification helpers ────────────────────────────────────────
+
+    def _verify_twilio_signature() -> bool:
+        """Validate Twilio webhook signature using X-Twilio-Signature header.
+        Returns True if valid or if verification is not configured."""
+        auth_token = os.environ.get("TWILIO_AUTH_TOKEN", "").strip()
+        if not auth_token:
+            return True  # Can't verify without auth token
+        signature = request.headers.get("X-Twilio-Signature", "")
+        if not signature:
+            app.logger.warning("Twilio webhook missing X-Twilio-Signature header")
+            return False
+        # Build the validation URL
+        url = request.url
+        # Sort POST params and append to URL
+        post_vars = request.form.to_dict()
+        s = url
+        for key in sorted(post_vars.keys()):
+            s += key + post_vars[key]
+        # Compute HMAC-SHA1
+        import base64
+        mac = hmac.new(auth_token.encode("utf-8"), s.encode("utf-8"), hashlib.sha1)
+        expected = base64.b64encode(mac.digest()).decode("utf-8")
+        return hmac.compare_digest(expected, signature)
+
+    def _verify_telnyx_webhook() -> bool:
+        """Basic Telnyx webhook verification — checks timestamp freshness."""
+        ts = request.headers.get("telnyx-timestamp", "")
+        if not ts:
+            return True  # No timestamp header — allow (older Telnyx configs)
+        try:
+            webhook_time = int(ts)
+            now = int(time.time())
+            # Reject events older than 5 minutes (replay protection)
+            if abs(now - webhook_time) > 300:
+                app.logger.warning("Telnyx webhook timestamp too old: %s", ts)
+                return False
+        except (ValueError, TypeError):
+            pass
+        return True
+
     @app.post("/webhooks/twilio/message")
     def twilio_message_webhook():
+        if not _verify_twilio_signature():
+            return jsonify({"error": "Invalid signature."}), 403
         form = request.form.to_dict()
         from_number = str(form.get("From", "")).strip()
         to_number = str(form.get("To", "")).strip()
@@ -1157,6 +1246,8 @@ def create_app() -> Flask:
 
     @app.post("/webhooks/twilio/voice")
     def twilio_voice_webhook():
+        if not _verify_twilio_signature():
+            return jsonify({"error": "Invalid signature."}), 403
         form = request.form.to_dict()
         from_number = str(form.get("From", "")).strip()
         to_number = str(form.get("To", "")).strip()
@@ -1178,7 +1269,7 @@ def create_app() -> Flask:
             "TWILIO_INBOUND_SAY_TEXT",
             "Thanks for calling. Your call was received by 2ndCall.",
         )
-        twiml = f"<Response><Say>{say_text}</Say></Response>"
+        twiml = f"<Response><Say>{xml_escape(say_text)}</Say></Response>"
         return Response(twiml, mimetype="text/xml")
 
     # In-memory store for active incoming calls (for polling by browser)
@@ -1259,6 +1350,8 @@ def create_app() -> Flask:
 
     @app.post("/webhooks/telnyx/events")
     def telnyx_events_webhook():
+        if not _verify_telnyx_webhook():
+            return jsonify({"error": "Invalid webhook request."}), 403
         body = request.get_json(silent=True) or {}
         data = body.get("data", {})
         event_type = str(data.get("event_type", body.get("event_type", "unknown"))).strip() or "unknown"
