@@ -1999,22 +1999,15 @@ async function handleDialpadCall() {
   const toNum = dialpadNum;
   const savedPersonal = personalNum || localStorage.getItem("2c_personal_phone") || "";
 
-  // Without personal number AND without WebRTC, live audio isn't possible
-  if (!savedPersonal) {
-    setStatus("dp-status", "Enter your personal phone number above for live audio calls.", true);
-    return;
-  }
-
-  setStatus("dp-status", "Calling your phone first…");
+  setStatus("dp-status", savedPersonal ? "Calling your phone first…" : "Placing call…");
   try {
     const callBody = {
       provider, from_number: from, to_number: toNum,
       say_text: "", estimated_minutes: 1,
-      personal_number: savedPersonal,
     };
+    if (savedPersonal) callBody.personal_number = savedPersonal;
     const result = await api("/api/calls/start", { method:"POST", body: JSON.stringify(callBody)});
     closeModal("modal-dialpad");
-    // Show call overlay
     showOutboundCallUI(toNum, result.call?.id);
     loadCalls();
   } catch(e) { setStatus("dp-status", e.message, true); }
@@ -3179,6 +3172,9 @@ function handleRTCNotification(notification) {
   const state = call.state;
   console.log("[WebRTC] Call state:", state, "direction:", call.direction);
 
+  // Notify the state watcher that WebRTC is producing events
+  if (window._webrtcStateWatcher) window._webrtcStateWatcher(notification);
+
   if (state === "ringing" && call.direction === "inbound") {
     showIncomingCall(call);
   } else if (state === "active" || state === "answering") {
@@ -3494,6 +3490,8 @@ async function makeWebRTCCall(fromNumber, toNumber) {
   _webrtcCallFrom = fromNumber;
   _webrtcCallTo = toNumber;
   _webrtcCallStartTime = Date.now();
+  _fallbackInProgress = false;
+  let _webrtcGotState = false;
   const name = contactName(toNumber);
   const overlay = document.getElementById("call-overlay");
   overlay.classList.remove("hidden");
@@ -3508,6 +3506,27 @@ async function makeWebRTCCall(fromNumber, toNumber) {
   document.getElementById("call-speaker-btn").style.display = "";
   document.getElementById("call-hangup-btn").style.display = "";
 
+  // Set a safety timeout — if WebRTC doesn't produce any call state within 6 seconds,
+  // it silently failed (common on iOS Safari). Auto-fallback to API call.
+  const webrtcTimeout = setTimeout(() => {
+    if (!_webrtcGotState && !_fallbackInProgress && _webrtcCallFrom) {
+      console.warn("[WebRTC] No call state received in 6s — falling back to API");
+      const f = _webrtcCallFrom, t = _webrtcCallTo;
+      _webrtcCallFrom = ""; _webrtcCallTo = ""; _webrtcCallStartTime = 0;
+      _activeCall = null;
+      _fallbackInProgress = true;
+      updateCallStatus("Connecting call…");
+      fallbackToAPICall(f, t);
+    }
+  }, 6000);
+
+  // Listen for any state change to know WebRTC is working
+  const origHandler = handleRTCNotification;
+  window._webrtcStateWatcher = (notification) => {
+    _webrtcGotState = true;
+    clearTimeout(webrtcTimeout);
+  };
+
   try {
     _activeCall = _rtcClient.newCall({
       destinationNumber: toNumber,
@@ -3516,6 +3535,7 @@ async function makeWebRTCCall(fromNumber, toNumber) {
       video: false,
     });
   } catch(e) {
+    clearTimeout(webrtcTimeout);
     fallbackToAPICall(fromNumber, toNumber);
   }
 }
@@ -3528,20 +3548,18 @@ async function fallbackToAPICall(fromNumber, toNumber) {
   const personalNum = (dpPersonal && dpPersonal.value.trim()) || localStorage.getItem("2c_personal_phone") || "";
   if (personalNum) localStorage.setItem("2c_personal_phone", personalNum);
 
-  if (!personalNum) {
-    updateCallStatus("Enter your personal phone in the dialpad for live calls.");
-    toast("Add your personal phone number in the dialpad for live audio calls", "error");
-    setTimeout(endCallUI, 4000);
-    _fallbackInProgress = false;
-    return;
+  if (personalNum) {
+    updateCallStatus("Calling your phone…");
+  } else {
+    updateCallStatus("Placing call…");
   }
 
-  updateCallStatus("Calling your phone…");
   const callBody = {
     provider, from_number: fromNumber, to_number: toNumber,
     say_text: "", estimated_minutes: 1,
-    personal_number: personalNum,
   };
+  if (personalNum) callBody.personal_number = personalNum;
+
   try {
     await api("/api/calls/start", { method:"POST", body: JSON.stringify(callBody)});
   } catch(e2) {
