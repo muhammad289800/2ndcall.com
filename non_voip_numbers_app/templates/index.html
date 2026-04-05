@@ -3118,6 +3118,9 @@ let _callSeconds = 0;
 let _isMuted = false;
 let _incomingPollTimer = null;
 let _pendingIncoming = null;
+let _lastIncomingCallId = null;
+let _lastIncomingCallTime = 0;
+let _declinedCallIds = {};  // callId -> timestamp of decline
 
 async function initWebRTC() {
   // Load Telnyx WebRTC SDK from CDN (more reliable than local bundle)
@@ -3307,6 +3310,20 @@ function startIncomingPoll() {
 
 function showIncomingCallFromWebhook(ic) {
   const from = ic.from || "Unknown";
+  const callId = ic.call_control_id || from;
+  const now = Date.now();
+  // Deduplicate: don't show the same incoming call twice within 10 seconds
+  if (callId === _lastIncomingCallId && (now - _lastIncomingCallTime) < 10000) {
+    console.log("[IncomingCall] Duplicate suppressed:", callId);
+    return;
+  }
+  // Skip if this call was already declined within 30 seconds
+  if (_declinedCallIds[callId] && (now - _declinedCallIds[callId]) < 30000) {
+    console.log("[IncomingCall] Already declined, ignoring:", callId);
+    return;
+  }
+  _lastIncomingCallId = callId;
+  _lastIncomingCallTime = now;
   const name = contactName(from);
   const overlay = document.getElementById("call-overlay");
   overlay.classList.remove("hidden");
@@ -3441,13 +3458,30 @@ window.onNativeVoIPEvent = function(event, data) {
       _nativeVoIPReady = true;
       toast("Native calling ready", "success");
       break;
-    case 'incoming':
+    case 'incoming': {
+      const incomingId = data || 'native-' + Date.now();
+      const now = Date.now();
+      // Deduplicate: skip if same call ID as last incoming
+      if (incomingId === _lastIncomingCallId && (now - _lastIncomingCallTime) < 10000) {
+        console.log("[NativeVoIP] Duplicate incoming call suppressed:", incomingId);
+        break;
+      }
+      // Skip if this call was already declined within 30 seconds
+      if (_declinedCallIds[incomingId] && (now - _declinedCallIds[incomingId]) < 30000) {
+        console.log("[NativeVoIP] Incoming call already declined, ignoring:", incomingId);
+        break;
+      }
+      _lastIncomingCallId = incomingId;
+      _lastIncomingCallTime = now;
       playSound('ring');
       showIncomingCallFromWebhook({from: data, to: '', call_control_id: 'native'});
       showNotification('Incoming Call', 'Call from ' + data, 'call');
       break;
+    }
     case 'calling':
       updateCallStatus("Calling…");
+      document.getElementById("call-timer").style.display = "";
+      startCallTimer();
       break;
     case 'state':
       console.log("[NativeVoIP] State update:", data);
@@ -3475,14 +3509,16 @@ window.onNativeVoIPEvent = function(event, data) {
       break;
     case 'hangup':
       stopSound();
+      if (_callTimer) { clearInterval(_callTimer); _callTimer = null; }
+      document.getElementById("call-timer").style.display = "none";
       updateCallStatus("Call ended");
       setTimeout(endCallUI, 1500);
       break;
     case 'error':
       console.error("[NativeVoIP] Error:", data);
-      // Ignore DONE(reason=null) — SDK reports this prematurely but call still works
-      if (data && data.includes("DONE(reason=null)")) {
-        console.log("[NativeVoIP] Ignoring premature DONE — call continues in background");
+      // Suppress non-fatal errors that occur during normal call flow
+      if (data && (data.includes("DONE(reason=null)") || data.includes("Connect failed"))) {
+        console.log("[NativeVoIP] Ignoring non-fatal error:", data);
         break;
       }
       toast("VoIP: " + data, "error");

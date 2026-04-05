@@ -469,10 +469,12 @@ public class VoIPBridge {
                                 // DONE(reason=null) is reported prematurely by the SDK
                                 sendEvent("hangup", "");
                                 activeCallId = null;
+                                lastIncomingCallId = null;
                                 lastState = "";
                             } else if (stateStr.contains("error")) {
                                 sendEvent("hangup", "");
                                 activeCallId = null;
+                                lastIncomingCallId = null;
                                 lastState = "";
                             }
                             // Ignore DONE(reason=null) — call may still be active
@@ -480,6 +482,7 @@ public class VoIPBridge {
                     } else if (activeCallId != null) {
                         sendEvent("hangup", "");
                         activeCallId = null;
+                        lastIncomingCallId = null;
                         lastState = "";
                     }
                 } catch (Exception e) {
