@@ -1968,6 +1968,9 @@ async function handleDialpadCall() {
   const personalNum = (document.getElementById("dp-personal").value || "").trim();
   if (personalNum) localStorage.setItem("2c_personal_phone", personalNum);
 
+  // Detect mobile browser
+  const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+
   // Try Native VoIP first (Android app — best audio quality)
   if (_nativeVoIPReady && typeof NativeVoIP !== 'undefined') {
     closeModal("modal-dialpad");
@@ -1975,15 +1978,15 @@ async function handleDialpadCall() {
     return;
   }
 
-  // Try WebRTC (works on both desktop and mobile browsers)
-  if (_rtcClient) {
+  // Try WebRTC on desktop only — mobile browsers (especially iOS) fail silently
+  if (_rtcClient && !isMobile) {
     closeModal("modal-dialpad");
     makeWebRTCCall(from, dialpadNum);
     return;
   }
 
-  // If WebRTC not initialized yet, try now (mobile browsers may need user gesture)
-  if (!_rtcClient && !_nativeVoIPReady) {
+  // On desktop, try to init WebRTC if not ready yet
+  if (!_rtcClient && !isMobile && !_nativeVoIPReady) {
     try {
       await initWebRTC();
       if (_rtcClient) {
