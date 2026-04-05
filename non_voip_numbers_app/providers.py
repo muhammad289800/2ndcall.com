@@ -653,6 +653,28 @@ class TelnyxProvider(BaseProvider):
             "available_credit": data.get("available_credit"),
         }
 
+    def create_webrtc_token(self) -> dict[str, Any]:
+        """Create a WebRTC credential token for browser/app-based calling."""
+        if not self.connection_id:
+            raise ProviderError("TELNYX_CONNECTION_ID is required for WebRTC calls.")
+        payload = self._request(
+            "POST",
+            "/telephony_credentials",
+            json_payload={
+                "connection_id": self.connection_id,
+            },
+        )
+        data = payload.get("data", {})
+        cred_id = data.get("id")
+        if not cred_id:
+            raise ProviderError("Failed to create WebRTC credential.")
+        # Generate a short-lived SIP token from the credential
+        token_payload = self._request("POST", f"/telephony_credentials/{cred_id}/token")
+        return {
+            "token": token_payload if isinstance(token_payload, str) else token_payload.get("data", token_payload),
+            "credential_id": cred_id,
+        }
+
 
 class SignalWireProvider(BaseProvider):
     provider_id = "signalwire"
