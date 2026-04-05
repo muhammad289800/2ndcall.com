@@ -29,9 +29,17 @@ public class VoIPBridge {
         this.webView = webView;
     }
 
+    private String defaultCallerNumber = null;
+
     @JavascriptInterface
     public void login(String username, String password) {
-        Log.d(TAG, "Login attempt: " + username);
+        loginWithNumber(username, password, null);
+    }
+
+    @JavascriptInterface
+    public void loginWithNumber(String username, String password, String callerIdNumber) {
+        Log.d(TAG, "Login attempt: " + username + " callerID: " + callerIdNumber);
+        defaultCallerNumber = callerIdNumber;
         new Thread(() -> {
             try {
                 // 1. Create TelnyxClient
@@ -364,10 +372,10 @@ public class VoIPBridge {
         // Attempt 1: Direct constructor with all 15 params
         try {
             return new com.telnyx.webrtc.sdk.CredentialConfig(
-                username,       // sipUser
-                password,       // sipPassword
-                "2ndCall",      // sipCallerIDName
-                null,           // sipCallerIDNumber
+                username,               // sipUser
+                password,               // sipPassword
+                "2ndCall",              // sipCallerIDName
+                defaultCallerNumber,    // sipCallerIDNumber — MUST be set for outbound
                 null,           // fcmToken
                 null,           // ringtone
                 null,           // ringBackTone (Integer? in Kotlin)

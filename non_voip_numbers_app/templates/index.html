@@ -3414,12 +3414,20 @@ let _nativeVoIPReady = false;
 function initNativeVoIP() {
   if (typeof NativeVoIP === 'undefined') return;
   console.log("[NativeVoIP] Bridge detected");
-  // Login with SIP credentials
-  api("/api/webrtc/token").then(d => {
+  // Login with SIP credentials + first owned number as caller ID
+  Promise.all([
+    api("/api/webrtc/token"),
+    api("/api/numbers"),
+  ]).then(([d, numData]) => {
+    const firstNumber = (numData.numbers && numData.numbers[0]) ? numData.numbers[0].phone_number : null;
+    console.log("[NativeVoIP] First number for callerID:", firstNumber);
     if (d.sip_username && d.sip_password) {
-      NativeVoIP.login(d.sip_username, d.sip_password);
+      if (typeof NativeVoIP.loginWithNumber === 'function') {
+        NativeVoIP.loginWithNumber(d.sip_username, d.sip_password, firstNumber || "");
+      } else {
+        NativeVoIP.login(d.sip_username, d.sip_password);
+      }
     } else if (d.login_token) {
-      // JWT token — can't use with native SDK directly
       console.log("[NativeVoIP] JWT token not supported for native, using SIP");
     }
   }).catch(e => console.warn("[NativeVoIP] Token fetch failed:", e.message));
