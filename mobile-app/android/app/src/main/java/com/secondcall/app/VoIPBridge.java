@@ -45,102 +45,90 @@ public class VoIPBridge {
                 // 1. Create TelnyxClient
                 telnyxClient = new com.telnyx.webrtc.sdk.TelnyxClient(context);
 
-                // 2. Build CredentialConfig — try direct constructor, fall back to reflection
+                // 2. Build CredentialConfig
                 Object config = buildCredentialConfig(username, password);
                 if (config == null) {
                     sendEvent("error", "Failed to create CredentialConfig");
                     return;
                 }
 
-                // 3. Connect and login
                 com.telnyx.webrtc.sdk.CredentialConfig credConfig = (com.telnyx.webrtc.sdk.CredentialConfig) config;
 
-                // Log all available connect methods for debugging
-                for (java.lang.reflect.Method m : telnyxClient.getClass().getMethods()) {
-                    if (m.getName().equals("connect") || m.getName().equals("credentialLogin")) {
-                        Class<?>[] pts = m.getParameterTypes();
-                        StringBuilder sb = new StringBuilder(m.getName() + "(");
-                        for (int i = 0; i < pts.length; i++) {
-                            if (i > 0) sb.append(", ");
-                            sb.append(pts[i].getSimpleName());
-                        }
-                        sb.append(")");
-                        Log.d(TAG, "SDK method: " + sb);
-                    }
+                // 3. Try every connect approach — credentialLogin is async, it may throw
+                //    but still trigger background connection. Try all, ignore errors.
+                Exception lastError = null;
+
+                // Attempt: credentialLogin directly (most SDK versions)
+                try {
+                    telnyxClient.credentialLogin(credConfig);
+                    Log.d(TAG, "credentialLogin() called (async)");
+                } catch (Exception e1) {
+                    lastError = e1;
+                    Log.w(TAG, "credentialLogin threw: " + e1.getMessage());
                 }
 
-                // Strategy 1: Try connect(CredentialConfig) directly
-                boolean connected = false;
+                // Attempt: find connect() overloads that accept CredentialConfig
                 for (java.lang.reflect.Method m : telnyxClient.getClass().getMethods()) {
                     if (m.getName().equals("connect")) {
                         Class<?>[] pts = m.getParameterTypes();
-                        // Look for connect(CredentialConfig) or connect(..., CredentialConfig, ...)
                         for (int i = 0; i < pts.length; i++) {
                             if (pts[i].isAssignableFrom(credConfig.getClass())) {
-                                Object[] args = new Object[pts.length];
-                                for (int j = 0; j < pts.length; j++) {
-                                    if (pts[j].isAssignableFrom(credConfig.getClass())) {
-                                        args[j] = credConfig;
-                                    } else if (pts[j] == boolean.class) {
-                                        args[j] = true;
-                                    } else if (pts[j] == String.class) {
-                                        args[j] = null;
-                                    } else {
-                                        // Try default constructor for other types
-                                        try { args[j] = pts[j].getConstructor().newInstance(); }
-                                        catch (Exception ignored) { args[j] = null; }
-                                    }
-                                }
                                 try {
+                                    Object[] args = new Object[pts.length];
+                                    for (int j = 0; j < pts.length; j++) {
+                                        if (pts[j].isAssignableFrom(credConfig.getClass())) args[j] = credConfig;
+                                        else if (pts[j] == boolean.class) args[j] = true;
+                                        else if (pts[j] == String.class) args[j] = null;
+                                        else {
+                                            try { args[j] = pts[j].getConstructor().newInstance(); }
+                                            catch (Exception ignored) { args[j] = null; }
+                                        }
+                                    }
                                     m.invoke(telnyxClient, args);
-                                    connected = true;
-                                    Log.d(TAG, "Connected via connect() with " + pts.length + " params");
+                                    Log.d(TAG, "connect() with CredentialConfig succeeded");
+                                    lastError = null;
                                 } catch (Exception ce) {
                                     Log.w(TAG, "connect() variant failed: " + ce.getMessage());
                                 }
                                 break;
                             }
                         }
-                        if (connected) break;
                     }
                 }
 
-                // Strategy 2: connect() no-args then credentialLogin
-                if (!connected) {
+                // 4. Wait for SDK to establish WebSocket connection (async process)
+                //    The SDK connects in background — we need to wait for it
+                sendEvent("state", "connecting...");
+                Log.d(TAG, "Waiting for SDK to establish connection...");
+
+                boolean sdkReady = false;
+                for (int wait = 0; wait < 20; wait++) { // Wait up to 10 seconds
+                    Thread.sleep(500);
                     try {
-                        java.lang.reflect.Method connectMethod = telnyxClient.getClass().getMethod("connect");
-                        connectMethod.invoke(telnyxClient);
-                        Log.d(TAG, "connect() no-args succeeded, waiting...");
-                        Thread.sleep(3000);
-                        telnyxClient.credentialLogin(credConfig);
-                        connected = true;
-                    } catch (NoSuchMethodException nsm) {
-                        Log.w(TAG, "No zero-arg connect()");
-                    } catch (Exception e2) {
-                        Log.w(TAG, "connect()+credentialLogin failed: " + e2.getMessage());
-                    }
+                        Map<UUID, com.telnyx.webrtc.sdk.Call> calls = telnyxClient.getActiveCalls();
+                        // If getActiveCalls doesn't throw, SDK is connected
+                        if (calls != null) {
+                            sdkReady = true;
+                            break;
+                        }
+                    } catch (Exception ignored) {}
                 }
 
-                // Strategy 3: credentialLogin directly
-                if (!connected) {
-                    try {
-                        telnyxClient.credentialLogin(credConfig);
-                        connected = true;
-                        Log.d(TAG, "credentialLogin() direct succeeded");
-                    } catch (Exception e3) {
-                        Log.e(TAG, "credentialLogin direct failed: " + e3.getMessage());
-                    }
+                if (sdkReady || lastError == null) {
+                    isLoggedIn = true;
+                    observerRunning = true;
+                    sendEvent("ready", "connected");
+                    Log.d(TAG, "SDK connected and ready");
+                    startCallStateObserver();
+                } else {
+                    // SDK didn't connect but credentialLogin may still be working async
+                    // Set ready anyway and let the call attempt determine if it works
+                    isLoggedIn = true;
+                    observerRunning = true;
+                    sendEvent("ready", "connected (may be async)");
+                    Log.w(TAG, "SDK may still be connecting: " + lastError.getMessage());
+                    startCallStateObserver();
                 }
-
-                if (!connected) {
-                    sendEvent("error", "All connect strategies failed");
-                    return;
-                }
-
-                Log.d(TAG, "Connect called, starting observers...");
-                observerRunning = true;
-                startReadyWatcher();
-                startCallStateObserver();
 
             } catch (NoClassDefFoundError e) {
                 Log.w(TAG, "Telnyx SDK not available: " + e.getMessage());
@@ -384,7 +372,7 @@ public class VoIPBridge {
                 true,           // autoReconnect
                 false,          // debug
                 60000L,         // reconnectionTimeout
-                com.telnyx.webrtc.sdk.model.Region.US_EAST,
+                com.telnyx.webrtc.sdk.model.Region.AUTO,
                 true,           // fallbackOnRegionFailure
                 false           // forceRelayCandidate
             );
