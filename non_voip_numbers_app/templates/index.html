@@ -1972,7 +1972,13 @@ async function handleDialpadCall() {
   const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 
   // Try Native VoIP first (Android app — best audio quality)
-  if (_nativeVoIPReady && typeof NativeVoIP !== 'undefined') {
+  // Always try if bridge exists, even if ready flag isn't set
+  if (typeof NativeVoIP !== 'undefined') {
+    // Check if bridge is at least created
+    try {
+      const state = NativeVoIP.getState();
+      console.log("[NativeVoIP] State before call:", state);
+    } catch(e) {}
     closeModal("modal-dialpad");
     makeNativeVoIPCall(from, dialpadNum);
     return;
@@ -3464,10 +3470,8 @@ window.onNativeVoIPEvent = function(event, data) {
     case 'error':
       toast("VoIP: " + data, "error");
       console.error("[NativeVoIP] Error:", data);
-      // If the error is about not being logged in or call failed, fall back to API
-      if (data && (data.includes("Not logged in") || data.includes("not created") || data.includes("Call failed") || data.includes("Connect failed"))) {
-        _nativeVoIPReady = false;
-      }
+      // Update call overlay to show the error
+      updateCallStatus("VoIP Error: " + (data || "unknown"));
       break;
     case 'mute':
       document.getElementById("call-mute-btn").style.background = data === 'true' ? 'var(--red)' : 'var(--surface2)';
@@ -3483,13 +3487,33 @@ function makeNativeVoIPCall(fromNumber, toNumber) {
   document.getElementById("call-avatar").textContent = avatarText(toNumber);
   document.getElementById("call-contact-name").textContent = name;
   document.getElementById("call-contact-number").textContent = toNumber;
-  updateCallStatus("Calling…");
+  updateCallStatus("Calling via VoIP…");
   document.getElementById("call-timer").style.display = "none";
   document.getElementById("call-incoming-actions").classList.add("hidden");
   document.getElementById("call-mute-btn").style.display = "";
   document.getElementById("call-speaker-btn").style.display = "";
   document.getElementById("call-hangup-btn").style.display = "";
-  NativeVoIP.call(toNumber, fromNumber);
+
+  try {
+    NativeVoIP.call(toNumber, fromNumber);
+  } catch(e) {
+    console.error("[NativeVoIP] call() threw:", e);
+    toast("Native call failed: " + e.message, "error");
+    updateCallStatus("VoIP failed, trying API…");
+    // Fall back to API call
+    fallbackToAPICall(fromNumber, toNumber);
+  }
+
+  // Safety: if no state change in 10s, VoIP call didn't go through
+  setTimeout(() => {
+    const status = document.getElementById("call-status")?.textContent || "";
+    if (status.includes("Calling via VoIP")) {
+      console.warn("[NativeVoIP] No state change in 10s — call likely failed");
+      updateCallStatus("VoIP timeout, trying API…");
+      toast("VoIP call didn't connect, using API fallback", "error");
+      fallbackToAPICall(fromNumber, toNumber);
+    }
+  }, 10000);
 }
 
 async function makeWebRTCCall(fromNumber, toNumber) {
