@@ -44,18 +44,24 @@ public class VoIPBridge {
                     return;
                 }
 
-                // 3. Connect with credential config
+                // 3. Connect and login
+                com.telnyx.webrtc.sdk.CredentialConfig credConfig = (com.telnyx.webrtc.sdk.CredentialConfig) config;
                 try {
-                    telnyxClient.connect(
-                        new com.telnyx.webrtc.sdk.TxServerConfiguration(),
-                        (com.telnyx.webrtc.sdk.CredentialConfig) config,
-                        null,   // txPushMetaData
-                        true    // autoLogin
-                    );
-                } catch (ClassCastException e) {
-                    // Config might be from a different class path — try credentialLogin
-                    Log.w(TAG, "connect() cast failed, trying credentialLogin...");
-                    telnyxClient.credentialLogin((com.telnyx.webrtc.sdk.CredentialConfig) config);
+                    // Try connect() with config params
+                    telnyxClient.credentialLogin(credConfig);
+                } catch (Exception connectErr) {
+                    Log.w(TAG, "credentialLogin failed, trying connect: " + connectErr.getMessage());
+                    // Fallback: some SDK versions need connect() first
+                    try {
+                        java.lang.reflect.Method connectMethod = telnyxClient.getClass().getMethod("connect");
+                        connectMethod.invoke(telnyxClient);
+                        Thread.sleep(2000);
+                        telnyxClient.credentialLogin(credConfig);
+                    } catch (Exception e2) {
+                        Log.e(TAG, "All connect attempts failed: " + e2.getMessage());
+                        sendEvent("error", "Connect failed: " + e2.getMessage());
+                        return;
+                    }
                 }
 
                 Log.d(TAG, "Connect called, starting observers...");
@@ -367,11 +373,17 @@ public class VoIPBridge {
         observerRunning = false;
         isLoggedIn = false;
         if (telnyxClient != null) {
-            try {
-                telnyxClient.onDestroy();
-            } catch (Exception e) {
-                Log.e(TAG, "Destroy error: " + e.getMessage());
+            // End any active calls
+            if (activeCallId != null) {
+                try {
+                    telnyxClient.endCall(activeCallId);
+                } catch (Exception ignored) {}
             }
+            // Try to disconnect/destroy via reflection (method name varies by version)
+            try {
+                java.lang.reflect.Method m = telnyxClient.getClass().getMethod("disconnect");
+                m.invoke(telnyxClient);
+            } catch (Exception ignored) {}
             telnyxClient = null;
         }
         activeCallId = null;
