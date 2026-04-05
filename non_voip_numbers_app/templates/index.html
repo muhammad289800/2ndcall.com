@@ -3451,8 +3451,9 @@ window.onNativeVoIPEvent = function(event, data) {
       break;
     case 'state':
       console.log("[NativeVoIP] State update:", data);
-      updateCallStatus("VoIP: " + data);
-      if (data === 'active' || data.includes('active')) {
+      // Don't update UI for DONE(reason=null) — call continues
+      if (data && data.includes('done') && data.includes('reason=null')) break;
+      if (data === 'active' || (data && data.includes('active'))) {
         stopSound();
         updateCallStatus("Connected — Live Audio");
         document.getElementById("call-timer").style.display = "";
@@ -3478,9 +3479,13 @@ window.onNativeVoIPEvent = function(event, data) {
       setTimeout(endCallUI, 1500);
       break;
     case 'error':
-      toast("VoIP: " + data, "error");
       console.error("[NativeVoIP] Error:", data);
-      // Update call overlay to show the error
+      // Ignore DONE(reason=null) — SDK reports this prematurely but call still works
+      if (data && data.includes("DONE(reason=null)")) {
+        console.log("[NativeVoIP] Ignoring premature DONE — call continues in background");
+        break;
+      }
+      toast("VoIP: " + data, "error");
       updateCallStatus("VoIP Error: " + (data || "unknown"));
       break;
     case 'mute':
@@ -3510,20 +3515,8 @@ function makeNativeVoIPCall(fromNumber, toNumber) {
     console.error("[NativeVoIP] call() threw:", e);
     toast("Native call failed: " + e.message, "error");
     updateCallStatus("VoIP failed, trying API…");
-    // Fall back to API call
     fallbackToAPICall(fromNumber, toNumber);
   }
-
-  // Safety: if no state change in 10s, VoIP call didn't go through
-  setTimeout(() => {
-    const status = document.getElementById("call-status")?.textContent || "";
-    if (status.includes("Calling via VoIP")) {
-      console.warn("[NativeVoIP] No state change in 10s — call likely failed");
-      updateCallStatus("VoIP timeout, trying API…");
-      toast("VoIP call didn't connect, using API fallback", "error");
-      fallbackToAPICall(fromNumber, toNumber);
-    }
-  }, 10000);
 }
 
 async function makeWebRTCCall(fromNumber, toNumber) {

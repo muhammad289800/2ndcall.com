@@ -153,20 +153,6 @@ public class VoIPBridge {
         }
         new Thread(() -> {
             try {
-                // Log available newInvite methods
-                for (java.lang.reflect.Method m : telnyxClient.getClass().getMethods()) {
-                    if (m.getName().equals("newInvite")) {
-                        Class<?>[] pts = m.getParameterTypes();
-                        StringBuilder sb = new StringBuilder("newInvite(");
-                        for (int i = 0; i < pts.length; i++) {
-                            if (i > 0) sb.append(", ");
-                            sb.append(pts[i].getSimpleName());
-                        }
-                        sb.append(")");
-                        Log.d(TAG, "Found: " + sb);
-                    }
-                }
-
                 com.telnyx.webrtc.sdk.Call callObj = telnyxClient.newInvite(
                     "2ndCall",            // callerName
                     callerNumber,         // callerNumber
@@ -184,43 +170,8 @@ public class VoIPBridge {
                     activeCallId = callObj.getCallId();
                     Log.d(TAG, "Call initiated, callId: " + activeCallId);
                     sendEvent("calling", destinationNumber);
-
-                    // Monitor this specific call for 15 seconds
-                    for (int i = 0; i < 15; i++) {
-                        Thread.sleep(1000);
-                        try {
-                            // getCallState() returns LiveData<CallState> — need getValue()
-                            Object liveData = callObj.getCallState();
-                            Object state = null;
-                            if (liveData != null) {
-                                try {
-                                    java.lang.reflect.Method getValue = liveData.getClass().getMethod("getValue");
-                                    state = getValue.invoke(liveData);
-                                } catch (Exception e) {
-                                    state = liveData; // fallback
-                                }
-                            }
-                            String stateStr = state != null ? state.toString() : "null";
-                            Log.d(TAG, "Call state [" + i + "s]: " + stateStr);
-                            sendEvent("state", stateStr.toLowerCase());
-
-                            if (stateStr.toLowerCase().contains("active")) {
-                                sendEvent("active", "");
-                                break;
-                            } else if (stateStr.toLowerCase().contains("done") || stateStr.toLowerCase().contains("error")) {
-                                sendEvent("error", "Call ended: " + stateStr);
-                                break;
-                            }
-                        } catch (Exception se) {
-                            Log.w(TAG, "State check error: " + se.getMessage());
-                        }
-
-                        // Also check active calls map
-                        try {
-                            Map<UUID, com.telnyx.webrtc.sdk.Call> activeCalls = telnyxClient.getActiveCalls();
-                            Log.d(TAG, "Active calls count: " + (activeCalls != null ? activeCalls.size() : 0));
-                        } catch (Exception ignored) {}
-                    }
+                    // Don't monitor state here — the background observer handles it
+                    // The SDK reports DONE(reason=null) prematurely but the call still connects
                 } else {
                     Log.e(TAG, "newInvite returned null");
                     sendEvent("error", "Call returned null");
@@ -496,11 +447,18 @@ public class VoIPBridge {
                                 sendEvent("active", "");
                             } else if (stateStr.contains("ringing") || stateStr.contains("connecting")) {
                                 sendEvent("ringing", "");
-                            } else if (stateStr.contains("done") || stateStr.contains("error")) {
+                            } else if (stateStr.contains("done") && !stateStr.contains("reason=null")) {
+                                // Only treat DONE as hangup if it has an actual reason
+                                // DONE(reason=null) is reported prematurely by the SDK
+                                sendEvent("hangup", "");
+                                activeCallId = null;
+                                lastState = "";
+                            } else if (stateStr.contains("error")) {
                                 sendEvent("hangup", "");
                                 activeCallId = null;
                                 lastState = "";
                             }
+                            // Ignore DONE(reason=null) — call may still be active
                         }
                     } else if (activeCallId != null) {
                         sendEvent("hangup", "");
