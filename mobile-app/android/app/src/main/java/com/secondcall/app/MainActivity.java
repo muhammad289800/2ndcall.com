@@ -3,10 +3,12 @@ package com.secondcall.app;
 import android.Manifest;
 import android.content.pm.PackageManager;
 import android.os.Bundle;
+import android.util.Log;
 import android.webkit.PermissionRequest;
 import android.webkit.WebChromeClient;
 import android.webkit.WebView;
 
+import androidx.annotation.NonNull;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 
@@ -44,6 +46,18 @@ public class MainActivity extends BridgeActivity {
         // Register native VoIP bridge
         voipBridge = new VoIPBridge(this, webView);
         webView.addJavascriptInterface(voipBridge, "NativeVoIP");
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == PERMISSION_REQUEST_CODE) {
+            for (int i = 0; i < permissions.length; i++) {
+                if (grantResults[i] != PackageManager.PERMISSION_GRANTED) {
+                    Log.w("MainActivity", "Permission denied: " + permissions[i] + " — WebRTC calls may not work");
+                }
+            }
+        }
     }
 
     @Override

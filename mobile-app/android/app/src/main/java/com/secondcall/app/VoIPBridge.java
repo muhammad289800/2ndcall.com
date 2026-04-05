@@ -32,11 +32,24 @@ public class VoIPBridge {
             Class<?> clientClass = Class.forName("com.telnyx.webrtc.sdk.TelnyxClient");
             telnyxClient = clientClass.getConstructor(Context.class).newInstance(context);
 
-            // Create credential config
+            // Create credential config — find constructor that accepts String parameters
             Class<?> configClass = Class.forName("com.telnyx.webrtc.sdk.model.CredentialConfig");
-            Object config = configClass.getConstructors()[0].newInstance(
-                username, password, null, null, null, null, null, null
-            );
+            Object config = null;
+            for (java.lang.reflect.Constructor<?> ctor : configClass.getConstructors()) {
+                Class<?>[] params = ctor.getParameterTypes();
+                if (params.length >= 2 && params[0] == String.class && params[1] == String.class) {
+                    Object[] args = new Object[params.length];
+                    args[0] = username;
+                    args[1] = password;
+                    // remaining args default to null
+                    config = ctor.newInstance(args);
+                    break;
+                }
+            }
+            if (config == null) {
+                sendEvent("error", "Telnyx SDK CredentialConfig constructor not found");
+                return;
+            }
 
             // Login
             clientClass.getMethod("credentialLogin", configClass).invoke(telnyxClient, config);

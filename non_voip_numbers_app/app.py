@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any
 
 import requests as http_requests
-from flask import Flask, Response, jsonify, render_template, request, session
+from flask import Flask, Response, jsonify, render_template, request, send_from_directory, session
 
 from .payments import (
     get_supported_networks,
@@ -361,7 +361,9 @@ def create_app() -> Flask:
 
     def _get_telnyx_headers() -> dict[str, str]:
         tp = providers.get("telnyx")
-        return {"Authorization": f"Bearer {tp.api_key}", "Content-Type": "application/json"} if tp else {}
+        if not tp or not tp.api_key:
+            return {}
+        return {"Authorization": f"Bearer {tp.api_key}", "Content-Type": "application/json"}
 
     @app.post("/api/webrtc/setup")
     @require_admin
@@ -527,7 +529,7 @@ def create_app() -> Flask:
 
     @app.get("/sw.js")
     def service_worker():
-        return app.send_static_file("sw.js"), 200, {"Content-Type": "application/javascript", "Service-Worker-Allowed": "/"}
+        return send_from_directory(app.static_folder, "sw.js", mimetype="application/javascript"), 200, {"Service-Worker-Allowed": "/"}
 
     @app.get("/health")
     def health():
@@ -1013,19 +1015,6 @@ def create_app() -> Flask:
         direction = request.args.get("direction")
         limit = parse_int(request.args.get("limit"), 100, 1, 500)
         return jsonify({"calls": storage.list_call_logs(limit=limit, direction=direction)})
-
-    @app.post("/api/webrtc/token")
-    @require_auth
-    def webrtc_token():
-        """Generate a Telnyx WebRTC credential token for browser/app calling."""
-        telnyx = providers.get("telnyx")
-        if not telnyx or not telnyx.is_configured():
-            return jsonify({"error": "Telnyx is not configured."}), 503
-        try:
-            result = telnyx.create_webrtc_token()
-            return jsonify(result)
-        except (ProviderError, ValueError) as exc:
-            return jsonify({"error": str(exc)}), 400
 
     @app.post("/api/calls/start")
     @require_auth
