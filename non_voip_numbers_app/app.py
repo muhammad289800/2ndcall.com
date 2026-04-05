@@ -883,6 +883,27 @@ def create_app() -> Flask:
         except (ProviderError, ValueError) as exc:
             return jsonify({"error": str(exc)}), 400
 
+    @app.post("/api/numbers/<int:number_id>/transfer")
+    @require_auth
+    def transfer_number(number_id: int):
+        body = payload()
+        to_email = str(body.get("to_email", "")).strip().lower()
+        if not to_email:
+            return jsonify({"error": "to_email is required."}), 400
+        current_user = _get_session_user()
+        if not current_user:
+            return jsonify({"error": "User session required."}), 401
+        target_user = storage.get_user_by_email(to_email)
+        if not target_user:
+            return jsonify({"error": f"No user found with email {to_email}"}), 404
+        if target_user["id"] == current_user["id"]:
+            return jsonify({"error": "Cannot transfer to yourself."}), 400
+        try:
+            result = storage.transfer_number(number_id, current_user["id"], target_user["id"])
+            return jsonify({"ok": True, "number": result, "transferred_to": to_email})
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
+
     @app.post("/api/numbers/sync")
     @require_auth
     def sync_owned_numbers():

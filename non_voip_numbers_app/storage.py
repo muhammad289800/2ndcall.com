@@ -281,6 +281,29 @@ class Storage:
         with self._connect() as conn:
             conn.execute("DELETE FROM managed_numbers WHERE id = ?", (number_id,))
 
+    def transfer_number(self, number_id: int, from_user_id: int, to_user_id: int) -> dict[str, Any]:
+        """Transfer a number from one user to another."""
+        with self._connect() as conn:
+            row = conn.execute("SELECT * FROM managed_numbers WHERE id = ?", (number_id,)).fetchone()
+            if not row:
+                raise ValueError("Number not found.")
+            row_dict = dict(row)
+            if row_dict.get("user_id") != from_user_id:
+                raise ValueError("You do not own this number.")
+            # Verify target user exists
+            target = conn.execute("SELECT id, email, name FROM users WHERE id = ?", (to_user_id,)).fetchone()
+            if not target:
+                raise ValueError("Target user not found.")
+            conn.execute(
+                "UPDATE managed_numbers SET user_id = ?, updated_at = ? WHERE id = ?",
+                (to_user_id, utc_now(), number_id),
+            )
+            updated = conn.execute("SELECT * FROM managed_numbers WHERE id = ?", (number_id,)).fetchone()
+            result = dict(updated)
+            result["metadata"] = json.loads(result.pop("metadata_json", "{}") or "{}")
+            result["transferred_to"] = dict(target)
+            return result
+
     def log_message(
         self,
         provider: str,

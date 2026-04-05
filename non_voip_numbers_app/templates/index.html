@@ -1120,6 +1120,31 @@
   </div>
 </div>
 
+<!-- Transfer Number Modal -->
+<div class="modal-overlay hidden" id="modal-transfer">
+  <div class="modal" style="max-width:400px;">
+    <div class="modal-header">
+      <h3>Transfer Number</h3>
+      <button class="modal-close" data-close="modal-transfer">&#10005;</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="transfer-number-id" />
+      <div style="text-align:center;margin-bottom:16px;">
+        <div style="font-size:11px;color:var(--muted);text-transform:uppercase;font-weight:700;letter-spacing:.5px;margin-bottom:4px;">Transferring</div>
+        <div id="transfer-number-display" style="font-size:22px;font-weight:800;font-family:monospace;color:var(--accent);"></div>
+      </div>
+      <label class="form-label">Recipient's email</label>
+      <input type="email" class="form-input" id="transfer-email" placeholder="user@example.com" />
+      <div style="font-size:12px;color:var(--muted);margin-bottom:16px;">The number will be moved to this user's account. This action cannot be undone.</div>
+      <button class="btn-primary" id="transfer-confirm-btn" style="width:100%;">
+        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" width="16" height="16" style="display:inline;vertical-align:middle;margin-right:6px;"><path stroke-linecap="round" stroke-linejoin="round" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/></svg>
+        Transfer Number
+      </button>
+      <div class="status-line" id="transfer-status" style="text-align:center;margin-top:10px;"></div>
+    </div>
+  </div>
+</div>
+
 <!-- Get a Number Modal -->
 <div class="modal-overlay hidden" id="modal-get-number">
   <div class="modal" style="max-width:580px;">
@@ -2220,6 +2245,10 @@ function renderNumbers() {
           <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" width="14" height="14"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
           Renew
         </button>
+        <button class="btn-text" data-transfer-id="${esc(n.id)}" data-transfer-num="${esc(n.phone_number)}" style="color:var(--purple);border-color:rgba(167,139,250,.2);">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" width="14" height="14"><path stroke-linecap="round" stroke-linejoin="round" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/></svg>
+          Transfer
+        </button>
         <button class="btn-text danger" data-release-id="${esc(n.id)}">Release</button>
       </div>
     </div>`;
@@ -2260,6 +2289,15 @@ function renderNumbers() {
         toast("Number released.");
         await loadNumbers();
       } catch(e) { toast(e.message, "error"); }
+    });
+  });
+  grid.querySelectorAll("[data-transfer-id]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      document.getElementById("transfer-number-id").value = btn.dataset.transferId;
+      document.getElementById("transfer-number-display").textContent = btn.dataset.transferNum;
+      document.getElementById("transfer-email").value = "";
+      document.getElementById("transfer-status").textContent = "";
+      document.getElementById("modal-transfer").classList.remove("hidden");
     });
   });
 }
@@ -2321,6 +2359,28 @@ function openRenewModal(numberId, phoneNumber) {
     if (e.target.id === "modal-renew-overlay") e.target.remove();
   });
 }
+
+// Transfer number
+document.getElementById("transfer-confirm-btn").addEventListener("click", async () => {
+  const numberId = document.getElementById("transfer-number-id").value;
+  const email = document.getElementById("transfer-email").value.trim();
+  if (!email) { setStatus("transfer-status", "Enter the recipient's email.", true); return; }
+  const btn = document.getElementById("transfer-confirm-btn");
+  btn.disabled = true; btn.textContent = "Transferring…";
+  try {
+    const result = await api(`/api/numbers/${numberId}/transfer`, {
+      method: "POST", body: JSON.stringify({ to_email: email })
+    });
+    setStatus("transfer-status", "Number transferred to " + email);
+    toast("Number transferred successfully!", "success");
+    setTimeout(() => closeModal("modal-transfer"), 1500);
+    await loadNumbers();
+  } catch(e) {
+    setStatus("transfer-status", e.message, true);
+  } finally {
+    btn.disabled = false; btn.innerHTML = '<svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" width="16" height="16" style="display:inline;vertical-align:middle;margin-right:6px;"><path stroke-linecap="round" stroke-linejoin="round" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/></svg> Transfer Number';
+  }
+});
 
 // Number search modal
 document.getElementById("get-number-btn").addEventListener("click", () => {
