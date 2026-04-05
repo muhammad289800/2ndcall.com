@@ -37,11 +37,8 @@ dependencies {
     implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
     implementation project(':capacitor-android')
 
-    // Telnyx VoIP SDK for native calling
-    implementation 'com.github.team-telnyx:telnyx-webrtc-android:v1.3.2'
-
-    // Required for VoIP
-    implementation 'com.google.code.gson:gson:2.10.1'
+    // Native VoIP SDK — will be added later when package is available
+    // implementation 'com.github.team-telnyx:telnyx-webrtc-android:v1.3.2'
 
     testImplementation "junit:junit:$junitVersion"
     androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
