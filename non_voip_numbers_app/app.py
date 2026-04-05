@@ -10,6 +10,7 @@ from typing import Any
 from xml.sax.saxutils import escape as xml_escape
 
 import requests as http_requests
+import stripe
 from flask import Flask, Response, jsonify, render_template, request, send_from_directory, session
 
 from .payments import (
@@ -634,6 +635,7 @@ def create_app() -> Flask:
                 "payment_orders": storage.list_payment_orders(user_id=uid, limit=20),
                 "crypto_configured": crypto_configured(),
                 "nowpayments_configured": bool(os.environ.get("NOWPAYMENTS_API_KEY", "").strip()),
+                "stripe_configured": bool(os.environ.get("STRIPE_SECRET_KEY", "").strip()),
                 "networks": get_supported_networks() if crypto_configured() else [],
             }
         )
@@ -1844,6 +1846,125 @@ def create_app() -> Flask:
             )
         elif payment_status in ("failed", "refunded", "expired"):
             storage.mark_payment_order_failed(order_id)
+
+        return jsonify({"ok": True})
+
+    # ── Stripe Integration ──────────────────────────────────────────────
+    STRIPE_SECRET_KEY = os.environ.get("STRIPE_SECRET_KEY", "").strip()
+    STRIPE_PUBLISHABLE_KEY = os.environ.get("STRIPE_PUBLISHABLE_KEY", "").strip()
+    STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET", "").strip()
+
+    if STRIPE_SECRET_KEY:
+        stripe.api_key = STRIPE_SECRET_KEY
+
+    def _stripe_configured() -> bool:
+        return bool(STRIPE_SECRET_KEY)
+
+    @app.post("/api/wallet/create-stripe-session")
+    @require_auth
+    def wallet_create_stripe_session():
+        """Create a Stripe Checkout Session for wallet top-up."""
+        if not _stripe_configured():
+            return jsonify({"error": "Stripe is not configured."}), 503
+        u = _get_session_user()
+        body = payload()
+        amount = parse_float(body.get("amount"), 0.0)
+        if amount < 1.0:
+            return jsonify({"error": "Minimum top-up is $1.00 USD."}), 400
+
+        order_id = f"2C-{uuid.uuid4().hex[:12].upper()}"
+        order = storage.create_payment_order(
+            order_id=order_id,
+            amount_usd=amount,
+            currency="USD",
+            deeplink="",
+            paydify_txn_id="",
+            user_id=u["id"] if u else None,
+        )
+
+        base_url = request.url_root.rstrip("/")
+        try:
+            checkout_session = stripe.checkout.Session.create(
+                payment_method_types=["card"],
+                line_items=[{
+                    "price_data": {
+                        "currency": "usd",
+                        "product_data": {
+                            "name": f"2ndCall Wallet Top-Up",
+                            "description": f"Add ${amount:.2f} to your 2ndCall wallet",
+                        },
+                        "unit_amount": int(amount * 100),  # Stripe uses cents
+                    },
+                    "quantity": 1,
+                }],
+                mode="payment",
+                success_url=f"{base_url}/?topup_success={order_id}",
+                cancel_url=f"{base_url}/?topup_cancel={order_id}",
+                metadata={"order_id": order_id, "user_id": str(u["id"]) if u else ""},
+            )
+        except stripe.StripeError as exc:
+            storage.mark_payment_order_failed(order_id)
+            return jsonify({"error": f"Stripe error: {exc.user_message or str(exc)}"}), 502
+
+        storage.update_payment_order_metadata(order_id, {
+            "stripe_session_id": checkout_session.id,
+            "payment_method": "stripe",
+        })
+
+        return jsonify({
+            "ok": True,
+            "order": order,
+            "checkout_url": checkout_session.url,
+            "session_id": checkout_session.id,
+        })
+
+    @app.post("/webhooks/stripe")
+    def stripe_webhook():
+        """Stripe webhook — credits wallet on successful payment."""
+        raw_body = request.get_data()
+        sig_header = request.headers.get("Stripe-Signature", "")
+
+        if STRIPE_WEBHOOK_SECRET:
+            try:
+                event = stripe.Webhook.construct_event(raw_body, sig_header, STRIPE_WEBHOOK_SECRET)
+            except ValueError:
+                return jsonify({"error": "Invalid payload"}), 400
+            except stripe.SignatureVerificationError:
+                return jsonify({"error": "Invalid signature"}), 401
+        else:
+            import json
+            event = json.loads(raw_body)
+
+        event_type = event.get("type") if isinstance(event, dict) else event.type
+        data_obj = event.get("data", {}).get("object", {}) if isinstance(event, dict) else event.data.object
+
+        if event_type == "checkout.session.completed":
+            metadata = data_obj.get("metadata") if isinstance(data_obj, dict) else data_obj.metadata
+            order_id = (metadata or {}).get("order_id", "")
+            if not order_id:
+                return jsonify({"ok": True, "message": "No order_id in metadata."})
+
+            order = storage.get_payment_order(order_id)
+            if not order:
+                return jsonify({"ok": True, "message": "Order not found."})
+            if order["status"] == "paid":
+                return jsonify({"ok": True, "message": "Already paid."})
+
+            amount_total = data_obj.get("amount_total") if isinstance(data_obj, dict) else data_obj.amount_total
+            credit_amount = (amount_total or 0) / 100.0  # Convert cents to dollars
+            if credit_amount <= 0:
+                credit_amount = float(order.get("amount_usd", 0))
+
+            payment_intent = data_obj.get("payment_intent") if isinstance(data_obj, dict) else data_obj.payment_intent
+            session_id = data_obj.get("id") if isinstance(data_obj, dict) else data_obj.id
+
+            storage.mark_payment_order_paid(
+                order_id=order_id,
+                paydify_txn_id=str(payment_intent or ""),
+                tx_hash=str(session_id or ""),
+                from_address="stripe:card",
+                paid_amount=credit_amount,
+            )
 
         return jsonify({"ok": True})
 

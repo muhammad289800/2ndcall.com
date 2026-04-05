@@ -1254,18 +1254,24 @@
         <!-- Payment method selector -->
         <div id="topup-method-selector" style="margin-top:14px;">
           <label class="form-label">Payment Method</label>
-          <div style="display:flex;gap:8px;">
-            <button class="btn-method active" id="method-card" data-method="nowpayments"
-              style="flex:1;padding:12px;border-radius:10px;border:2px solid var(--accent-h);background:rgba(59,130,246,.08);cursor:pointer;text-align:center;">
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button class="btn-method active" id="method-stripe" data-method="stripe"
+              style="flex:1;min-width:120px;padding:12px;border-radius:10px;border:2px solid var(--accent-h);background:rgba(59,130,246,.08);cursor:pointer;text-align:center;">
               <div style="font-size:20px;margin-bottom:4px;">&#128179;</div>
-              <div style="font-size:13px;font-weight:700;color:var(--text);">Card / Crypto</div>
-              <div style="font-size:11px;color:var(--muted);">Visa, MC, Apple Pay + 200 coins</div>
+              <div style="font-size:13px;font-weight:700;color:var(--text);">Card</div>
+              <div style="font-size:11px;color:var(--muted);">Visa, MC, Apple Pay</div>
+            </button>
+            <button class="btn-method" id="method-card" data-method="nowpayments"
+              style="flex:1;min-width:120px;padding:12px;border-radius:10px;border:2px solid var(--border);background:var(--surface2);cursor:pointer;text-align:center;">
+              <div style="font-size:20px;margin-bottom:4px;">&#9939;</div>
+              <div style="font-size:13px;font-weight:700;color:var(--text);">Crypto</div>
+              <div style="font-size:11px;color:var(--muted);">200+ coins via NOWPayments</div>
             </button>
             <button class="btn-method" id="method-direct" data-method="direct"
-              style="flex:1;padding:12px;border-radius:10px;border:2px solid var(--border);background:var(--surface2);cursor:pointer;text-align:center;">
-              <div style="font-size:20px;margin-bottom:4px;">&#9939;</div>
+              style="flex:1;min-width:120px;padding:12px;border-radius:10px;border:2px solid var(--border);background:var(--surface2);cursor:pointer;text-align:center;">
+              <div style="font-size:20px;margin-bottom:4px;">&#128176;</div>
               <div style="font-size:13px;font-weight:700;color:var(--text);">Direct USDT</div>
-              <div style="font-size:11px;color:var(--muted);">Send USDT directly to wallet</div>
+              <div style="font-size:11px;color:var(--muted);">Send USDT to wallet</div>
             </button>
           </div>
         </div>
@@ -2554,7 +2560,7 @@ function renderWallet() {
 // ── Checkout / Add Funds ──────────────────────────────────────────────
 let _checkoutNetworks = [];
 let _checkoutOrderId = null;
-let _selectedPayMethod = "nowpayments"; // default to card/crypto
+let _selectedPayMethod = "stripe"; // default to Stripe card
 document.getElementById("open-topup-btn").addEventListener("click", () => openTopupModal());
 
 function openTopupModal() {
@@ -2563,6 +2569,10 @@ function openTopupModal() {
   document.getElementById("topup-choose-status").textContent = "";
   document.getElementById("topup-amount-input").value = "";
   document.querySelectorAll(".btn-amount").forEach(b => b.classList.remove("active"));
+  // Reset checkout elements visibility for next use
+  document.getElementById("checkout-qr").style.display = "";
+  const txHashEl = document.getElementById("checkout-tx-hash");
+  if (txHashEl.parentElement) txHashEl.parentElement.style.display = "";
 
   // Populate network selector from wallet data
   _checkoutNetworks = S.wallet.networks || [];
@@ -2577,51 +2587,49 @@ function openTopupModal() {
 
   // Show/hide payment method options based on config
   const methodSel = document.getElementById("topup-method-selector");
+  const stripeBtn = document.getElementById("method-stripe");
   const cardBtn = document.getElementById("method-card");
   const directBtn = document.getElementById("method-direct");
+  const hasStripe = S.wallet.stripe_configured;
   const hasNowPay = S.wallet.nowpayments_configured;
   const hasCrypto = S.wallet.crypto_configured;
 
-  if (hasNowPay && hasCrypto) {
-    methodSel.style.display = "";
-    _selectPayMethod("nowpayments");
-  } else if (hasNowPay) {
-    methodSel.style.display = "";
-    cardBtn.style.display = "";
-    directBtn.style.display = "none";
-    _selectPayMethod("nowpayments");
-  } else if (hasCrypto) {
-    methodSel.style.display = "none";
-    _selectPayMethod("direct");
-  } else {
-    methodSel.style.display = "none";
-    _selectPayMethod("direct");
-  }
+  stripeBtn.style.display = hasStripe ? "" : "none";
+  cardBtn.style.display = hasNowPay ? "" : "none";
+  directBtn.style.display = hasCrypto ? "" : "none";
+
+  const anyMethod = hasStripe || hasNowPay || hasCrypto;
+  methodSel.style.display = anyMethod ? "" : "none";
+
+  // Default to best method available
+  if (hasStripe) _selectPayMethod("stripe");
+  else if (hasNowPay) _selectPayMethod("nowpayments");
+  else if (hasCrypto) _selectPayMethod("direct");
+  else _selectPayMethod("direct");
 
   document.getElementById("modal-topup").classList.remove("hidden");
 }
 
 function _selectPayMethod(method) {
   _selectedPayMethod = method;
+  const stripeBtn = document.getElementById("method-stripe");
   const cardBtn = document.getElementById("method-card");
   const directBtn = document.getElementById("method-direct");
   const networkField = document.getElementById("topup-network-field");
-  if (method === "nowpayments") {
-    cardBtn.style.borderColor = "var(--accent-h)";
-    cardBtn.style.background = "rgba(59,130,246,.08)";
-    directBtn.style.borderColor = "var(--border)";
-    directBtn.style.background = "var(--surface2)";
-    networkField.style.display = "none";
-  } else {
-    directBtn.style.borderColor = "var(--accent-h)";
-    directBtn.style.background = "rgba(59,130,246,.08)";
-    cardBtn.style.borderColor = "var(--border)";
-    cardBtn.style.background = "var(--surface2)";
-    networkField.style.display = "";
-  }
+  // Reset all
+  [stripeBtn, cardBtn, directBtn].forEach(b => {
+    b.style.borderColor = "var(--border)";
+    b.style.background = "var(--surface2)";
+  });
+  // Highlight selected
+  const activeBtn = method === "stripe" ? stripeBtn : method === "nowpayments" ? cardBtn : directBtn;
+  activeBtn.style.borderColor = "var(--accent-h)";
+  activeBtn.style.background = "rgba(59,130,246,.08)";
+  networkField.style.display = method === "direct" ? "" : "none";
 }
 
 // Payment method toggle buttons
+document.getElementById("method-stripe").addEventListener("click", () => _selectPayMethod("stripe"));
 document.getElementById("method-card").addEventListener("click", () => _selectPayMethod("nowpayments"));
 document.getElementById("method-direct").addEventListener("click", () => _selectPayMethod("direct"));
 
@@ -2639,6 +2647,41 @@ document.getElementById("topup-proceed-btn").addEventListener("click", async () 
   const statusEl = document.getElementById("topup-choose-status");
   if (!amount || amount < 1) {
     statusEl.style.color = "var(--red)"; statusEl.textContent = "Minimum amount is $1.00"; return;
+  }
+
+  // ── Stripe card flow ──
+  if (_selectedPayMethod === "stripe") {
+    statusEl.style.color = "var(--muted)"; statusEl.textContent = "Redirecting to checkout…";
+    document.getElementById("topup-proceed-btn").disabled = true;
+    try {
+      const d = await api("/api/wallet/create-stripe-session", {
+        method: "POST", body: JSON.stringify({ amount })
+      });
+      _checkoutOrderId = d.order.order_id;
+      if (d.checkout_url) {
+        window.open(d.checkout_url, "_blank");
+      }
+      // Switch to waiting state
+      document.getElementById("topup-step-choose").style.display = "none";
+      document.getElementById("topup-step-checkout").style.display = "";
+      document.getElementById("checkout-amount-display").textContent = `$${amount.toFixed(2)}`;
+      document.getElementById("checkout-network-label").textContent = "via Card (Stripe)";
+      document.getElementById("checkout-address").textContent = d.checkout_url || "Checkout opened in new tab";
+      document.getElementById("checkout-net-warn").textContent = "Stripe";
+      document.getElementById("checkout-order-id").textContent = `Order: ${d.order.order_id}`;
+      document.getElementById("checkout-qr").style.display = "none";
+      document.getElementById("checkout-status-area").style.display = "";
+      document.getElementById("checkout-success").style.display = "none";
+      document.getElementById("checkout-tx-hash").parentElement.style.display = "none";
+      document.getElementById("checkout-status-text").textContent = "Complete payment in the checkout tab — we're watching for confirmation…";
+      document.getElementById("checkout-spinner").style.display = "";
+      startOrderPolling(d.order.order_id, amount);
+    } catch(e) {
+      statusEl.style.color = "var(--red)"; statusEl.textContent = e.message;
+    } finally {
+      document.getElementById("topup-proceed-btn").disabled = false;
+    }
+    return;
   }
 
   // ── NOWPayments card/crypto flow ──
