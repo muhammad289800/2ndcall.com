@@ -730,10 +730,19 @@ def create_app() -> Flask:
             return jsonify({"error": "Order not found."}), 404
         if order["status"] == "paid":
             return jsonify({"ok": True, "order": order, "message": "Already paid."})
+        if order["status"] == "failed":
+            return jsonify({"error": "This order has been cancelled or expired."}), 410
 
         u = _get_session_user()
         if u and order.get("user_id") and order["user_id"] != u["id"] and not _is_admin():
             return jsonify({"error": "Not your order."}), 403
+
+        # Expire orders older than 2 hours
+        from .payments import _iso_to_ms
+        order_age_ms = int(time.time() * 1000) - _iso_to_ms(order.get("created_at", ""))
+        if order_age_ms > 2 * 3600 * 1000:
+            storage.mark_payment_order_failed(order_id)
+            return jsonify({"error": "Order expired. Please create a new one."}), 410
 
         # Verify on blockchain
         tx_info = verify_trc20_tx(tx_hash)
@@ -744,11 +753,25 @@ def create_app() -> Flask:
         order_amount = float(order.get("amount_usd", 0))
         tx_amount = tx_info.get("amount", 0)
 
-        # Validate: amount should be close enough (within $0.50 tolerance for rounding)
-        if tx_amount < order_amount - 0.50:
+        # Validate: tx must be sent TO our wallet address
+        tx_to = (tx_info.get("to_address") or "").strip()
+        if not expected_address or not tx_to or tx_to.lower() != expected_address.lower():
+            return jsonify({
+                "error": "Transaction was not sent to the correct wallet address."
+            }), 400
+
+        # Validate: amount should be close enough (within $0.10 tolerance for rounding)
+        if tx_amount < order_amount - 0.10:
             return jsonify({
                 "error": f"Transaction amount ${tx_amount:.2f} is less than order amount ${order_amount:.2f}."
             }), 400
+
+        # Prevent tx_hash reuse — check if this hash was already used for another order
+        existing = storage.get_payment_order_by_tx_hash(tx_hash)
+        if existing and existing["order_id"] != order_id:
+            return jsonify({
+                "error": "This transaction hash has already been used for another order."
+            }), 409
 
         # Mark as paid
         storage.mark_payment_order_paid(
@@ -853,7 +876,13 @@ def create_app() -> Flask:
                     )
                     wallet_info = charged
                 except ValueError:
-                    pass
+                    # Charge failed — release the number so user doesn't get it free
+                    try:
+                        provider.release_number(record.get("provider_number_id") or "")
+                    except Exception:
+                        pass
+                    storage.remove_number(record["id"])
+                    return jsonify({"error": "Insufficient wallet balance. Number purchase reversed."}), 402
             return jsonify(
                 {
                     "number": record,
@@ -1627,12 +1656,22 @@ def create_app() -> Flask:
         if not WALLET_TRC20 or order["status"] != "pending":
             return False
 
+        # Expire orders older than 2 hours
         order_created_ms = _iso_to_ms(order.get("created_at", ""))
+        if order_created_ms > 0 and (int(time.time() * 1000) - order_created_ms) > 2 * 3600 * 1000:
+            store.mark_payment_order_failed(order["order_id"])
+            return False
+
         # Scan from 1 minute before order creation
         min_ts = max(0, order_created_ms - 60000)
         txns = scan_trc20_transactions(WALLET_TRC20, min_timestamp_ms=min_ts, limit=20)
         if not txns:
             return False
+
+        # Filter: only txns sent TO our wallet
+        txns = [t for t in txns if (t.get("to_address") or "").lower() == WALLET_TRC20.lower()]
+        # Filter: reject any tx_hash already used for a different paid order
+        txns = [t for t in txns if not store.get_payment_order_by_tx_hash(t["tx_hash"])]
 
         matches = match_payment_to_orders(txns, [order], WALLET_TRC20)
         if not matches:
@@ -1661,6 +1700,9 @@ def create_app() -> Flask:
             return jsonify({"scanned": 0, "matched": 0, "message": "No pending orders."})
 
         txns = scan_trc20_transactions(WALLET_TRC20, limit=50)
+        # Only txns sent TO our wallet, and not already used
+        txns = [t for t in txns if (t.get("to_address") or "").lower() == WALLET_TRC20.lower()]
+        txns = [t for t in txns if not storage.get_payment_order_by_tx_hash(t["tx_hash"])]
         matches = match_payment_to_orders(txns, pending, WALLET_TRC20)
 
         for tx, order in matches:

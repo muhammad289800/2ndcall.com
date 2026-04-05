@@ -167,6 +167,16 @@ class Storage:
             # Per-user number isolation
             self._ensure_column(conn, "managed_numbers", "user_id", "INTEGER DEFAULT NULL")
 
+    # Allowed identifiers for _ensure_column — prevents SQL injection via dynamic DDL
+    _ALLOWED_TABLES = frozenset({
+        "managed_numbers", "message_logs", "call_logs",
+        "wallet_transactions", "provider_webhook_events", "users", "payment_orders",
+    })
+    _ALLOWED_COLUMNS = frozenset({
+        "direction", "event_type", "avatar_color", "last_seen",
+        "user_id", "metadata_json",
+    })
+
     def _ensure_column(
         self,
         conn: sqlite3.Connection,
@@ -174,6 +184,10 @@ class Storage:
         column: str,
         column_definition: str,
     ) -> None:
+        if table not in self._ALLOWED_TABLES:
+            raise ValueError(f"_ensure_column: disallowed table '{table}'")
+        if column not in self._ALLOWED_COLUMNS:
+            raise ValueError(f"_ensure_column: disallowed column '{column}'")
         existing = conn.execute(f"PRAGMA table_info({table})").fetchall()
         if any(row["name"] == column for row in existing):
             return
@@ -684,6 +698,17 @@ class Storage:
             row = conn.execute(
                 "SELECT * FROM payment_orders WHERE order_id=?",
                 (order_id,),
+            ).fetchone()
+        return dict(row) if row else None
+
+    def get_payment_order_by_tx_hash(self, tx_hash: str) -> dict[str, Any] | None:
+        """Find a paid order by its tx_hash — used to prevent replay attacks."""
+        if not tx_hash:
+            return None
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM payment_orders WHERE tx_hash=? AND status='paid' LIMIT 1",
+                (tx_hash,),
             ).fetchone()
         return dict(row) if row else None
 
