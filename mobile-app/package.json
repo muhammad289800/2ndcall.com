@@ -1,0 +1,16 @@
+{
+  "name": "2ndcall-mobile",
+  "version": "1.0.0",
+  "description": "2ndCall Mobile App with WebRTC calling",
+  "private": true,
+  "scripts": {
+    "build": "echo 'Using remote server URL'",
+    "cap:sync": "npx cap sync",
+    "cap:open:android": "npx cap open android"
+  },
+  "dependencies": {
+    "@capacitor/android": "^6.0.0",
+    "@capacitor/core": "^6.0.0",
+    "@capacitor/cli": "^6.0.0"
+  }
+}

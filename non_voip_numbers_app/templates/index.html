@@ -514,6 +514,50 @@
     .toast.success { color: var(--green); border-color: rgba(63,185,80,.3); }
     .toast.error { color: var(--red); border-color: rgba(248,81,73,.3); }
 
+    /* ── In-Call Overlay ── */
+    #call-overlay {
+      position: fixed; inset: 0; z-index: 2000;
+      background: linear-gradient(135deg, #0d1117 0%, #161b22 100%);
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      transition: opacity .3s;
+    }
+    #call-overlay.hidden { display: none; }
+    .call-overlay-status { font-size: 14px; color: var(--muted); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px; }
+    .call-overlay-number { font-size: 32px; font-weight: 800; color: var(--text); margin-bottom: 4px; font-family: monospace; letter-spacing: 1px; }
+    .call-overlay-name { font-size: 16px; color: var(--muted); margin-bottom: 8px; }
+    .call-overlay-timer { font-size: 20px; color: var(--accent-h); font-family: monospace; margin-bottom: 48px; }
+    .call-controls { display: flex; gap: 24px; align-items: center; }
+    .call-ctrl-btn {
+      width: 64px; height: 64px; border-radius: 50%; border: none;
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer; transition: all .15s; position: relative;
+    }
+    .call-ctrl-btn svg { width: 28px; height: 28px; }
+    .call-ctrl-btn.mute { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
+    .call-ctrl-btn.mute.active { background: var(--red-bg); color: var(--red); border-color: var(--red); }
+    .call-ctrl-btn.speaker { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
+    .call-ctrl-btn.speaker.active { background: var(--accent-bg); color: var(--accent-h); border-color: var(--accent); }
+    .call-ctrl-btn.hangup { background: var(--red); color: white; box-shadow: 0 4px 16px rgba(248,81,73,.4); }
+    .call-ctrl-btn.hangup:hover { background: #e5443d; }
+    .call-ctrl-btn.answer { background: var(--green); color: white; box-shadow: 0 4px 16px rgba(63,185,80,.4); }
+    .call-ctrl-btn.answer:hover { background: #4ec860; }
+    .call-ctrl-label { font-size: 11px; color: var(--muted); text-align: center; margin-top: 6px; }
+    .call-ctrl-wrap { display: flex; flex-direction: column; align-items: center; }
+    .call-incoming-actions { display: flex; gap: 48px; align-items: center; margin-top: 24px; }
+    .webrtc-badge {
+      display: inline-flex; align-items: center; gap: 4px;
+      font-size: 11px; font-weight: 600; padding: 2px 8px;
+      border-radius: 10px; margin-bottom: 16px;
+    }
+    .webrtc-badge.connected { background: rgba(63,185,80,.15); color: var(--green); }
+    .webrtc-badge.connecting { background: rgba(210,153,34,.15); color: var(--yellow); }
+    .webrtc-badge.disconnected { background: rgba(248,81,73,.15); color: var(--red); }
+    .webrtc-dot { width: 6px; height: 6px; border-radius: 50%; }
+    .webrtc-badge.connected .webrtc-dot { background: var(--green); }
+    .webrtc-badge.connecting .webrtc-dot { background: var(--yellow); animation: pulse-dot 1s infinite; }
+    .webrtc-badge.disconnected .webrtc-dot { background: var(--red); }
+    @keyframes pulse-dot { 0%,100% { opacity:1; } 50% { opacity:.3; } }
+
     /* ── Bottom nav (mobile) ── */
     #bottom-nav {
       display: none; position: fixed; bottom: 0; left: 0; right: 0;
@@ -747,6 +791,10 @@
     <div class="panel" id="panel-calls">
       <div class="panel-header">
         <h2>Recent Calls</h2>
+        <div class="webrtc-badge disconnected" id="webrtc-badge" title="WebRTC Status">
+          <span class="webrtc-dot"></span>
+          <span id="webrtc-badge-text">Offline</span>
+        </div>
         <button class="icon-btn accent" id="new-call-btn" title="New call">
           <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"/></svg>
         </button>
@@ -989,6 +1037,49 @@
   </div>
 </div>
 
+<!-- In-Call Overlay -->
+<div id="call-overlay" class="hidden">
+  <div class="call-overlay-status" id="call-status-label">Calling...</div>
+  <div class="call-overlay-number" id="call-remote-number"></div>
+  <div class="call-overlay-name" id="call-remote-name"></div>
+  <div class="call-overlay-timer" id="call-timer">00:00</div>
+  <div class="call-controls" id="call-controls-active">
+    <div class="call-ctrl-wrap">
+      <button class="call-ctrl-btn mute" id="call-mute-btn" title="Mute">
+        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4M12 15a3 3 0 003-3V5a3 3 0 00-6 0v7a3 3 0 003 3z"/></svg>
+      </button>
+      <div class="call-ctrl-label">Mute</div>
+    </div>
+    <div class="call-ctrl-wrap">
+      <button class="call-ctrl-btn hangup" id="call-hangup-btn" title="Hang Up">
+        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M16 8l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2M5 3a2 2 0 00-2 2v1c0 8.284 6.716 15 15 15h1a2 2 0 002-2v-3.28a1 1 0 00-.684-.948l-4.493-1.498a1 1 0 00-1.21.502l-1.13 2.257a11.042 11.042 0 01-5.516-5.516l2.257-1.13a1 1 0 00.502-1.21L9.228 3.683A1 1 0 008.279 3H5z"/></svg>
+      </button>
+      <div class="call-ctrl-label">End</div>
+    </div>
+    <div class="call-ctrl-wrap">
+      <button class="call-ctrl-btn speaker" id="call-speaker-btn" title="Speaker">
+        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15.536 8.464a5 5 0 010 7.072M18.364 5.636a9 9 0 010 12.728M11 5L6 9H2v6h4l5 4V5z"/></svg>
+      </button>
+      <div class="call-ctrl-label">Speaker</div>
+    </div>
+  </div>
+  <!-- Incoming call buttons (shown only for incoming) -->
+  <div class="call-incoming-actions hidden" id="call-incoming-actions">
+    <div class="call-ctrl-wrap">
+      <button class="call-ctrl-btn hangup" id="call-reject-btn" title="Decline">
+        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M16 8l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2M5 3a2 2 0 00-2 2v1c0 8.284 6.716 15 15 15h1a2 2 0 002-2v-3.28a1 1 0 00-.684-.948l-4.493-1.498a1 1 0 00-1.21.502l-1.13 2.257a11.042 11.042 0 01-5.516-5.516l2.257-1.13a1 1 0 00.502-1.21L9.228 3.683A1 1 0 008.279 3H5z"/></svg>
+      </button>
+      <div class="call-ctrl-label">Decline</div>
+    </div>
+    <div class="call-ctrl-wrap">
+      <button class="call-ctrl-btn answer" id="call-answer-btn" title="Answer">
+        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"/></svg>
+      </button>
+      <div class="call-ctrl-label">Answer</div>
+    </div>
+  </div>
+</div>
+
 <!-- Dialpad Modal -->
 <div class="modal-overlay hidden" id="modal-dialpad">
   <div class="modal">
@@ -1160,7 +1251,12 @@
 
 <!-- Toast container -->
 <div id="toast-container"></div>
+<audio id="ringtone-audio" loop preload="none">
+  <source src="data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=" type="audio/wav">
+</audio>
+<audio id="remote-audio" autoplay></audio>
 
+<script src="https://unpkg.com/@telnyx/webrtc@2/lib/bundle.js"></script>
 <script>
 // ════════════════════════════════════════════
 //  STATE
@@ -1181,6 +1277,14 @@ const S = {
   seenContacts: JSON.parse(localStorage.getItem("2c_seen") || "{}"),
   currentUser: null,
   isAdmin: false,
+  // WebRTC state
+  webrtcClient: null,
+  webrtcReady: false,
+  activeCall: null,
+  callTimerInterval: null,
+  callStartTime: null,
+  isMuted: false,
+  isSpeaker: false,
 };
 
 // ════════════════════════════════════════════
@@ -1707,6 +1811,18 @@ document.getElementById("dp-call-btn").addEventListener("click", async () => {
   const from = document.getElementById("dp-from").value;
   if (!from) { setStatus("dp-status","No number to call from. Get a number first.", true); return; }
   const provider = (S.numbers.find(n => n.phone_number === from) || {}).provider || "mock";
+
+  // Try WebRTC call first if client is connected
+  if (S.webrtcReady && S.webrtcClient && provider === "telnyx") {
+    setStatus("dp-status","Connecting WebRTC call…");
+    try {
+      startWebRTCCall(from, dialpadNum);
+      closeModal("modal-dialpad");
+    } catch(e) { setStatus("dp-status", e.message, true); }
+    return;
+  }
+
+  // Fallback to API-initiated call
   setStatus("dp-status","Initiating call…");
   try {
     await api("/api/calls/start", { method:"POST", body: JSON.stringify({
@@ -1718,6 +1834,209 @@ document.getElementById("dp-call-btn").addEventListener("click", async () => {
     setTimeout(() => closeModal("modal-dialpad"), 1500);
     loadCalls();
   } catch(e) { setStatus("dp-status", e.message, true); }
+});
+
+// ════════════════════════════════════════════
+//  WEBRTC
+// ════════════════════════════════════════════
+function updateWebRTCBadge(state) {
+  const badge = document.getElementById("webrtc-badge");
+  const text = document.getElementById("webrtc-badge-text");
+  badge.className = "webrtc-badge " + state;
+  const labels = { connected: "WebRTC", connecting: "Connecting", disconnected: "Offline" };
+  text.textContent = labels[state] || state;
+}
+
+async function initWebRTC() {
+  if (typeof TelnyxWebRTC === "undefined") {
+    console.warn("TelnyxWebRTC SDK not loaded");
+    return;
+  }
+  updateWebRTCBadge("connecting");
+  try {
+    const tokenData = await api("/api/webrtc/token", { method: "POST" });
+    const token = typeof tokenData.token === "string" ? tokenData.token : JSON.stringify(tokenData.token);
+
+    const client = new TelnyxWebRTC.TelnyxRTC({
+      login_token: token,
+    });
+
+    client.on("telnyx.ready", () => {
+      S.webrtcReady = true;
+      updateWebRTCBadge("connected");
+      console.log("WebRTC client ready");
+    });
+
+    client.on("telnyx.error", (err) => {
+      console.error("WebRTC error:", err);
+      S.webrtcReady = false;
+      updateWebRTCBadge("disconnected");
+    });
+
+    client.on("telnyx.socket.close", () => {
+      S.webrtcReady = false;
+      updateWebRTCBadge("disconnected");
+      // Attempt reconnect after 5s
+      setTimeout(() => {
+        if (!S.webrtcReady) initWebRTC();
+      }, 5000);
+    });
+
+    client.on("telnyx.notification", (notification) => {
+      const call = notification.call;
+      if (!call) return;
+
+      if (notification.type === "callUpdate") {
+        handleCallUpdate(call);
+      }
+    });
+
+    client.connect();
+    S.webrtcClient = client;
+  } catch (e) {
+    console.error("Failed to init WebRTC:", e);
+    updateWebRTCBadge("disconnected");
+  }
+}
+
+function handleCallUpdate(call) {
+  S.activeCall = call;
+  const state = call.state;
+
+  switch (state) {
+    case "ringing":
+      showIncomingCall(call);
+      break;
+    case "trying":
+    case "requesting":
+      showCallOverlay(call, "Calling...");
+      break;
+    case "early":
+      showCallOverlay(call, "Ringing...");
+      break;
+    case "active":
+      showCallOverlay(call, "Connected");
+      startCallTimer();
+      // Attach remote audio stream
+      const remoteAudio = document.getElementById("remote-audio");
+      if (call.remoteStream) {
+        remoteAudio.srcObject = call.remoteStream;
+      }
+      break;
+    case "held":
+      showCallOverlay(call, "On Hold");
+      break;
+    case "hangup":
+    case "destroy":
+    case "purge":
+      endCallUI();
+      break;
+  }
+}
+
+function showIncomingCall(call) {
+  const overlay = document.getElementById("call-overlay");
+  const callerNumber = call.options?.remoteCallerNumber || call.options?.callerNumber || "Unknown";
+  document.getElementById("call-status-label").textContent = "Incoming Call";
+  document.getElementById("call-remote-number").textContent = callerNumber;
+  document.getElementById("call-remote-name").textContent = contactName(callerNumber);
+  document.getElementById("call-timer").textContent = "";
+  document.getElementById("call-controls-active").classList.add("hidden");
+  document.getElementById("call-incoming-actions").classList.remove("hidden");
+  overlay.classList.remove("hidden");
+  // Play ringtone
+  try { document.getElementById("ringtone-audio").play().catch(()=>{}); } catch(e) {}
+}
+
+function showCallOverlay(call, status) {
+  const overlay = document.getElementById("call-overlay");
+  const remoteNumber = call.options?.destinationNumber || call.options?.remoteCallerNumber || call.options?.callerNumber || "Unknown";
+  document.getElementById("call-status-label").textContent = status;
+  document.getElementById("call-remote-number").textContent = remoteNumber;
+  document.getElementById("call-remote-name").textContent = contactName(remoteNumber);
+  document.getElementById("call-controls-active").classList.remove("hidden");
+  document.getElementById("call-incoming-actions").classList.add("hidden");
+  overlay.classList.remove("hidden");
+  // Stop ringtone
+  try { document.getElementById("ringtone-audio").pause(); document.getElementById("ringtone-audio").currentTime = 0; } catch(e) {}
+}
+
+function startCallTimer() {
+  S.callStartTime = Date.now();
+  clearInterval(S.callTimerInterval);
+  S.callTimerInterval = setInterval(() => {
+    const elapsed = Math.floor((Date.now() - S.callStartTime) / 1000);
+    const m = String(Math.floor(elapsed / 60)).padStart(2, "0");
+    const s = String(elapsed % 60).padStart(2, "0");
+    document.getElementById("call-timer").textContent = `${m}:${s}`;
+  }, 1000);
+}
+
+function endCallUI() {
+  clearInterval(S.callTimerInterval);
+  document.getElementById("call-overlay").classList.add("hidden");
+  S.activeCall = null;
+  S.isMuted = false;
+  S.isSpeaker = false;
+  document.getElementById("call-mute-btn").classList.remove("active");
+  document.getElementById("call-speaker-btn").classList.remove("active");
+  try { document.getElementById("ringtone-audio").pause(); document.getElementById("ringtone-audio").currentTime = 0; } catch(e) {}
+  try { document.getElementById("remote-audio").srcObject = null; } catch(e) {}
+  loadCalls();
+}
+
+function startWebRTCCall(fromNumber, toNumber) {
+  if (!S.webrtcClient) throw new Error("WebRTC not connected");
+  const call = S.webrtcClient.newCall({
+    callerNumber: fromNumber,
+    destinationNumber: toNumber,
+    audio: true,
+    video: false,
+  });
+  S.activeCall = call;
+  showCallOverlay(call, "Calling...");
+}
+
+// In-call control buttons
+document.getElementById("call-hangup-btn").addEventListener("click", () => {
+  if (S.activeCall) {
+    try { S.activeCall.hangup(); } catch(e) {}
+  }
+  endCallUI();
+});
+
+document.getElementById("call-mute-btn").addEventListener("click", () => {
+  if (!S.activeCall) return;
+  S.isMuted = !S.isMuted;
+  if (S.isMuted) {
+    S.activeCall.muteAudio();
+  } else {
+    S.activeCall.unmuteAudio();
+  }
+  document.getElementById("call-mute-btn").classList.toggle("active", S.isMuted);
+});
+
+document.getElementById("call-speaker-btn").addEventListener("click", () => {
+  S.isSpeaker = !S.isSpeaker;
+  const remoteAudio = document.getElementById("remote-audio");
+  if (remoteAudio.setSinkId) {
+    // Toggle between default and speaker (best-effort)
+    remoteAudio.setSinkId(S.isSpeaker ? "default" : "").catch(()=>{});
+  }
+  document.getElementById("call-speaker-btn").classList.toggle("active", S.isSpeaker);
+});
+
+document.getElementById("call-answer-btn").addEventListener("click", () => {
+  if (S.activeCall) {
+    S.activeCall.answer({ audio: true, video: false });
+  }
+});
+
+document.getElementById("call-reject-btn").addEventListener("click", () => {
+  if (S.activeCall) {
+    try { S.activeCall.hangup(); } catch(e) {}
+  }
+  endCallUI();
 });
 
 // ════════════════════════════════════════════
@@ -2418,6 +2737,8 @@ async function initApp() {
     refreshAllFromSelects();
     loadCalls();
     startAutoRefresh();
+    // Initialize WebRTC for browser-based calling
+    initWebRTC();
   } catch(e) {
     toast("Failed to load app data: " + e.message, "error");
   }

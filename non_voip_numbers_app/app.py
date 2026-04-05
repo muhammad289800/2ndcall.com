@@ -696,6 +696,19 @@ def create_app() -> Flask:
             )
             return jsonify({"error": str(exc)}), 400
 
+    @app.post("/api/webrtc/token")
+    @require_auth
+    def webrtc_token():
+        """Generate a Telnyx WebRTC credential token for browser/app calling."""
+        telnyx = providers.get("telnyx")
+        if not telnyx or not telnyx.is_configured():
+            return jsonify({"error": "Telnyx is not configured."}), 503
+        try:
+            result = telnyx.create_webrtc_token()
+            return jsonify(result)
+        except (ProviderError, ValueError) as exc:
+            return jsonify({"error": str(exc)}), 400
+
     @app.post("/webhooks/twilio/message")
     def twilio_message_webhook():
         form = request.form.to_dict()

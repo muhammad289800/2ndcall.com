@@ -2,4 +2,9 @@ __pycache__/
 *.pyc
 .env
 non_voip_numbers_app/non_voip_numbers.db
+mobile-app/node_modules/
+mobile-app/android/.gradle/
+mobile-app/android/app/build/
+mobile-app/android/build/
+mobile-app/android/capacitor-cordova-android-plugins/build/
 
