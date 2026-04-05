@@ -3442,7 +3442,9 @@ window.onNativeVoIPEvent = function(event, data) {
       updateCallStatus("Calling…");
       break;
     case 'state':
-      if (data === 'active') {
+      console.log("[NativeVoIP] State update:", data);
+      updateCallStatus("VoIP: " + data);
+      if (data === 'active' || data.includes('active')) {
         stopSound();
         updateCallStatus("Connected — Live Audio");
         document.getElementById("call-timer").style.display = "";

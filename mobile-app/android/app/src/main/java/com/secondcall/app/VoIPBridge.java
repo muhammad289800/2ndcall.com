@@ -188,9 +188,36 @@ public class VoIPBridge {
                     activeCallId = callObj.getCallId();
                     Log.d(TAG, "Call initiated, callId: " + activeCallId);
                     sendEvent("calling", destinationNumber);
+
+                    // Monitor this specific call for 15 seconds
+                    for (int i = 0; i < 15; i++) {
+                        Thread.sleep(1000);
+                        try {
+                            Object state = callObj.getCallState();
+                            String stateStr = state != null ? state.toString() : "null";
+                            Log.d(TAG, "Call state [" + i + "s]: " + stateStr);
+                            sendEvent("state", stateStr.toLowerCase());
+
+                            if (stateStr.toLowerCase().contains("active")) {
+                                sendEvent("active", "");
+                                break;
+                            } else if (stateStr.toLowerCase().contains("done") || stateStr.toLowerCase().contains("error")) {
+                                sendEvent("error", "Call ended: " + stateStr);
+                                break;
+                            }
+                        } catch (Exception se) {
+                            Log.w(TAG, "State check error: " + se.getMessage());
+                        }
+
+                        // Also check active calls map
+                        try {
+                            Map<UUID, com.telnyx.webrtc.sdk.Call> activeCalls = telnyxClient.getActiveCalls();
+                            Log.d(TAG, "Active calls count: " + (activeCalls != null ? activeCalls.size() : 0));
+                        } catch (Exception ignored) {}
+                    }
                 } else {
                     Log.e(TAG, "newInvite returned null");
-                    sendEvent("error", "Call returned null — SDK may not be connected");
+                    sendEvent("error", "Call returned null");
                 }
             } catch (Exception e) {
                 Log.e(TAG, "Call failed: " + e.getMessage(), e);
