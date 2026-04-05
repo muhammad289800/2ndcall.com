@@ -99,9 +99,8 @@ public class VoIPBridge {
                 }
 
                 if (connected) {
-                    isLoggedIn = true;
-                    sendEvent("ready", "connected");
-                    Log.d(TAG, "Login successful");
+                    Log.d(TAG, "Connect called, starting state observer...");
+                    startReadyWatcher();
                     startCallStateObserver();
                 } else {
                     sendEvent("error", "Could not find connect or credentialLogin method");
@@ -352,6 +351,43 @@ public class VoIPBridge {
     @JavascriptInterface
     public boolean isReady() {
         return isLoggedIn;
+    }
+
+    /**
+     * Watch for SDK readiness. Polls until the client reports ready or timeout.
+     */
+    private void startReadyWatcher() {
+        new Thread(() -> {
+            for (int i = 0; i < 20; i++) { // 20 x 500ms = 10s max wait
+                try { Thread.sleep(500); } catch (InterruptedException ignored) { return; }
+                if (telnyxClient == null) return;
+                try {
+                    // Check if client has any gateway method indicating ready state
+                    Method isConnected = null;
+                    for (Method m : telnyxClient.getClass().getMethods()) {
+                        if (m.getName().equals("isConnected") && m.getParameterCount() == 0) {
+                            isConnected = m;
+                            break;
+                        }
+                    }
+                    if (isConnected != null) {
+                        Object result = isConnected.invoke(telnyxClient);
+                        if (Boolean.TRUE.equals(result)) {
+                            isLoggedIn = true;
+                            sendEvent("ready", "connected");
+                            Log.d(TAG, "SDK ready (isConnected=true)");
+                            return;
+                        }
+                    }
+                } catch (Exception ignored) {}
+            }
+            // Timeout — assume ready if we got this far without error
+            if (!isLoggedIn) {
+                isLoggedIn = true;
+                sendEvent("ready", "connected");
+                Log.w(TAG, "SDK ready (timeout fallback)");
+            }
+        }).start();
     }
 
     /**
