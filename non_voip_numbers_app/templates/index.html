@@ -3393,6 +3393,10 @@ function answerIncoming() {
 
 function declineIncoming() {
   stopSound();
+  // Track declined call so duplicate alerts for the same call are suppressed
+  if (_lastIncomingCallId) {
+    _declinedCallIds[_lastIncomingCallId] = Date.now();
+  }
   if (_activeCall && _activeCall.hangup) _activeCall.hangup();
   // API hangup for webhook-detected calls
   if (_pendingIncoming && _pendingIncoming.call_control_id) {
