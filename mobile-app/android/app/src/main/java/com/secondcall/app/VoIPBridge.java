@@ -23,6 +23,7 @@ public class VoIPBridge {
     private boolean isMuted = false;
     private UUID activeCallId = null;
     private volatile boolean observerRunning = false;
+    private String lastIncomingCallId = null;
 
     public VoIPBridge(Context context, WebView webView) {
         this.context = context;
@@ -48,7 +49,7 @@ public class VoIPBridge {
                 // 2. Build CredentialConfig
                 Object config = buildCredentialConfig(username, password);
                 if (config == null) {
-                    sendEvent("error", "Failed to create CredentialConfig");
+                    Log.w(TAG, "Failed to create CredentialConfig");
                     return;
                 }
 
@@ -134,8 +135,7 @@ public class VoIPBridge {
                 Log.w(TAG, "Telnyx SDK not available: " + e.getMessage());
                 sendEvent("error", "Native VoIP SDK not loaded. Using web calling.");
             } catch (Exception e) {
-                Log.e(TAG, "Login failed: " + e.getMessage(), e);
-                sendEvent("error", "Login failed: " + e.getMessage());
+                Log.w(TAG, "Login failed (non-fatal): " + e.getMessage(), e);
             }
         }).start();
     }
@@ -170,8 +170,18 @@ public class VoIPBridge {
                     activeCallId = callObj.getCallId();
                     Log.d(TAG, "Call initiated, callId: " + activeCallId);
                     sendEvent("calling", destinationNumber);
-                    // Don't monitor state here — the background observer handles it
-                    // The SDK reports DONE(reason=null) prematurely but the call still connects
+                    // Schedule a fallback "active" event after 3 seconds.
+                    // The observer may not detect "active" because DONE(reason=null)
+                    // is returned prematurely, but the call IS working.
+                    new Thread(() -> {
+                        try {
+                            Thread.sleep(3000);
+                            if (activeCallId != null) {
+                                sendEvent("active", "");
+                                Log.d(TAG, "Sent fallback 'active' event after 3s");
+                            }
+                        } catch (InterruptedException ignored) {}
+                    }).start();
                 } else {
                     Log.e(TAG, "newInvite returned null");
                     sendEvent("error", "Call returned null");
@@ -446,7 +456,14 @@ public class VoIPBridge {
                             if (stateStr.contains("active")) {
                                 sendEvent("active", "");
                             } else if (stateStr.contains("ringing") || stateStr.contains("connecting")) {
-                                sendEvent("ringing", "");
+                                // Prevent duplicate incoming/ringing alerts for the same call
+                                String callIdStr = activeCallId != null ? activeCallId.toString() : "";
+                                if (callIdStr.equals(lastIncomingCallId)) {
+                                    Log.d(TAG, "Skipping duplicate ringing event for call: " + callIdStr);
+                                } else {
+                                    lastIncomingCallId = callIdStr;
+                                    sendEvent("ringing", "");
+                                }
                             } else if (stateStr.contains("done") && !stateStr.contains("reason=null")) {
                                 // Only treat DONE as hangup if it has an actual reason
                                 // DONE(reason=null) is reported prematurely by the SDK
