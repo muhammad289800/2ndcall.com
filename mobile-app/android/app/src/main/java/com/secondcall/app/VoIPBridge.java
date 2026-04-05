@@ -6,16 +6,19 @@ import android.util.Log;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebView;
 
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Method;
+
 /**
- * Native VoIP bridge between WebView JavaScript and Telnyx Android SDK.
- * Uses com.telnyx.webrtc.lib (Maven Central)
+ * Native VoIP bridge between WebView JavaScript and Telnyx Android Voice SDK.
+ * Uses com.github.team-telnyx:telnyx-webrtc-android (JitPack)
  */
 public class VoIPBridge {
     private static final String TAG = "VoIPBridge";
 
     private final Context context;
     private final WebView webView;
-    private Object telnyxClient; // Will be TelnyxClient when SDK loads
+    private Object telnyxClient;
     private boolean isLoggedIn = false;
     private boolean isMuted = false;
 
@@ -28,36 +31,69 @@ public class VoIPBridge {
     public void login(String username, String password) {
         Log.d(TAG, "Login attempt: " + username);
         try {
-            // Use reflection to avoid compile-time dependency issues
+            // Initialize TelnyxClient
             Class<?> clientClass = Class.forName("com.telnyx.webrtc.sdk.TelnyxClient");
             telnyxClient = clientClass.getConstructor(Context.class).newInstance(context);
 
-            // Create credential config — find constructor that accepts String parameters
-            Class<?> configClass = Class.forName("com.telnyx.webrtc.sdk.model.CredentialConfig");
+            // Connect the client first
+            try {
+                Method connectMethod = clientClass.getMethod("connect");
+                connectMethod.invoke(telnyxClient);
+            } catch (NoSuchMethodException e) {
+                Log.w(TAG, "connect() method not found, SDK may auto-connect on login");
+            }
+
+            // Build CredentialConfig — find constructor with String params
+            Class<?> configClass = Class.forName("com.telnyx.webrtc.sdk.CredentialConfig");
             Object config = null;
-            for (java.lang.reflect.Constructor<?> ctor : configClass.getConstructors()) {
+
+            // Try constructors, looking for one that takes Strings
+            for (Constructor<?> ctor : configClass.getConstructors()) {
                 Class<?>[] params = ctor.getParameterTypes();
                 if (params.length >= 2 && params[0] == String.class && params[1] == String.class) {
                     Object[] args = new Object[params.length];
-                    args[0] = username;
-                    args[1] = password;
-                    // remaining args default to null
+                    args[0] = username;  // sipUser
+                    args[1] = password;  // sipPassword
+                    if (params.length > 2 && params[2] == String.class) args[2] = "2ndCall";  // callerIdName
+                    if (params.length > 3 && params[3] == String.class) args[3] = "";  // callerIdNumber
+                    // remaining args stay null (fcmToken, ringtone, etc.)
                     config = ctor.newInstance(args);
                     break;
                 }
             }
+
             if (config == null) {
-                sendEvent("error", "Telnyx SDK CredentialConfig constructor not found");
+                // Try model.CredentialConfig path
+                try {
+                    configClass = Class.forName("com.telnyx.webrtc.sdk.model.CredentialConfig");
+                    for (Constructor<?> ctor : configClass.getConstructors()) {
+                        Class<?>[] params = ctor.getParameterTypes();
+                        if (params.length >= 2 && params[0] == String.class && params[1] == String.class) {
+                            Object[] args = new Object[params.length];
+                            args[0] = username;
+                            args[1] = password;
+                            if (params.length > 2 && params[2] == String.class) args[2] = "2ndCall";
+                            if (params.length > 3 && params[3] == String.class) args[3] = "";
+                            config = ctor.newInstance(args);
+                            break;
+                        }
+                    }
+                } catch (ClassNotFoundException ignored) {}
+            }
+
+            if (config == null) {
+                sendEvent("error", "CredentialConfig constructor not found. SDK version may be incompatible.");
                 return;
             }
 
-            // Login
-            clientClass.getMethod("credentialLogin", configClass).invoke(telnyxClient, config);
+            // Login with credentials
+            Method loginMethod = clientClass.getMethod("credentialLogin", configClass);
+            loginMethod.invoke(telnyxClient, config);
             isLoggedIn = true;
             sendEvent("ready", "connected");
             Log.d(TAG, "Login successful");
         } catch (ClassNotFoundException e) {
-            Log.w(TAG, "Telnyx SDK not available, using web fallback");
+            Log.w(TAG, "Telnyx SDK not available: " + e.getMessage());
             sendEvent("error", "Native VoIP SDK not loaded. Using web calling.");
         } catch (Exception e) {
             Log.e(TAG, "Login failed: " + e.getMessage(), e);
@@ -73,11 +109,44 @@ public class VoIPBridge {
             return;
         }
         try {
-            java.lang.reflect.Method newInvite = telnyxClient.getClass().getMethod(
-                "newInvite", String.class, String.class, String.class, java.util.Map.class, String.class
-            );
-            newInvite.invoke(telnyxClient, callerNumber, destinationNumber, "2ndCall", null, null);
-            sendEvent("calling", destinationNumber);
+            // Try telnyxClient.call.newInvite() — SDK v3 uses a call manager
+            Object callManager = null;
+            try {
+                Method getCall = telnyxClient.getClass().getMethod("getCall");
+                callManager = getCall.invoke(telnyxClient);
+            } catch (NoSuchMethodException e) {
+                // Try direct method
+                callManager = telnyxClient;
+            }
+
+            if (callManager != null) {
+                // Find newInvite method — signature varies by version
+                Method newInvite = null;
+                for (Method m : callManager.getClass().getMethods()) {
+                    if (m.getName().equals("newInvite")) {
+                        newInvite = m;
+                        break;
+                    }
+                }
+                if (newInvite != null) {
+                    Class<?>[] params = newInvite.getParameterTypes();
+                    Object[] args = new Object[params.length];
+                    // Fill in known parameters by position
+                    if (params.length >= 3) {
+                        args[0] = callerNumber;       // callerName or callerNumber
+                        args[1] = destinationNumber;  // callerNumber or destinationNumber
+                        args[2] = destinationNumber;  // destinationNumber
+                    } else if (params.length == 2) {
+                        args[0] = callerNumber;
+                        args[1] = destinationNumber;
+                    }
+                    // remaining args stay null
+                    newInvite.invoke(callManager, args);
+                    sendEvent("calling", destinationNumber);
+                } else {
+                    sendEvent("error", "newInvite method not found in SDK");
+                }
+            }
         } catch (Exception e) {
             Log.e(TAG, "Call failed: " + e.getMessage(), e);
             sendEvent("error", "Call failed: " + e.getMessage());
@@ -87,6 +156,21 @@ public class VoIPBridge {
     @JavascriptInterface
     public void answer() {
         Log.d(TAG, "Answer");
+        if (telnyxClient != null) {
+            try {
+                Object callManager = telnyxClient.getClass().getMethod("getCall").invoke(telnyxClient);
+                if (callManager != null) {
+                    for (Method m : callManager.getClass().getMethods()) {
+                        if (m.getName().equals("acceptCall")) {
+                            m.invoke(callManager, new Object[m.getParameterCount()]);
+                            break;
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                Log.e(TAG, "Answer failed: " + e.getMessage());
+            }
+        }
         sendEvent("answered", "");
     }
 
@@ -95,17 +179,45 @@ public class VoIPBridge {
         Log.d(TAG, "Hangup");
         if (telnyxClient != null) {
             try {
-                telnyxClient.getClass().getMethod("onDestroy").invoke(telnyxClient);
+                Object callManager = telnyxClient.getClass().getMethod("getCall").invoke(telnyxClient);
+                if (callManager != null) {
+                    for (Method m : callManager.getClass().getMethods()) {
+                        if (m.getName().equals("endCall") || m.getName().equals("hangup")) {
+                            m.invoke(callManager, new Object[m.getParameterCount()]);
+                            break;
+                        }
+                    }
+                }
             } catch (Exception e) {
-                Log.e(TAG, "Hangup error", e);
+                Log.e(TAG, "Hangup error: " + e.getMessage());
             }
+            // Also try destroying client
+            try {
+                telnyxClient.getClass().getMethod("onDestroy").invoke(telnyxClient);
+            } catch (Exception ignored) {}
         }
+        isLoggedIn = false;
         sendEvent("hangup", "");
     }
 
     @JavascriptInterface
     public void mute() {
         isMuted = !isMuted;
+        if (telnyxClient != null) {
+            try {
+                Object callManager = telnyxClient.getClass().getMethod("getCall").invoke(telnyxClient);
+                if (callManager != null) {
+                    for (Method m : callManager.getClass().getMethods()) {
+                        if (m.getName().equals("onMuteUnmutePressed")) {
+                            m.invoke(callManager);
+                            break;
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                Log.e(TAG, "Mute error: " + e.getMessage());
+            }
+        }
         sendEvent("mute", String.valueOf(isMuted));
     }
 
@@ -142,8 +254,10 @@ public class VoIPBridge {
             try {
                 telnyxClient.getClass().getMethod("onDestroy").invoke(telnyxClient);
             } catch (Exception e) {
-                Log.e(TAG, "Destroy error", e);
+                Log.e(TAG, "Destroy error: " + e.getMessage());
             }
+            telnyxClient = null;
         }
+        isLoggedIn = false;
     }
 }
