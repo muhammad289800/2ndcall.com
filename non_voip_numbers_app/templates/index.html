@@ -3463,6 +3463,11 @@ window.onNativeVoIPEvent = function(event, data) {
       break;
     case 'error':
       toast("VoIP: " + data, "error");
+      console.error("[NativeVoIP] Error:", data);
+      // If the error is about not being logged in or call failed, fall back to API
+      if (data && (data.includes("Not logged in") || data.includes("not created") || data.includes("Call failed") || data.includes("Connect failed"))) {
+        _nativeVoIPReady = false;
+      }
       break;
     case 'mute':
       document.getElementById("call-mute-btn").style.background = data === 'true' ? 'var(--red)' : 'var(--surface2)';

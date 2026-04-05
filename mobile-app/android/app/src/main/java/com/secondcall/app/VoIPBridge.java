@@ -147,12 +147,30 @@ public class VoIPBridge {
     @JavascriptInterface
     public void call(String destinationNumber, String callerNumber) {
         Log.d(TAG, "Call: " + callerNumber + " -> " + destinationNumber);
-        if (telnyxClient == null || !isLoggedIn) {
-            sendEvent("error", "Not logged in");
+        if (telnyxClient == null) {
+            sendEvent("error", "VoIP client not created");
             return;
+        }
+        if (!isLoggedIn) {
+            // Try to use it anyway — SDK might be connected even if our flag wasn't set
+            Log.w(TAG, "isLoggedIn=false but trying call anyway...");
         }
         new Thread(() -> {
             try {
+                // Log available newInvite methods
+                for (java.lang.reflect.Method m : telnyxClient.getClass().getMethods()) {
+                    if (m.getName().equals("newInvite")) {
+                        Class<?>[] pts = m.getParameterTypes();
+                        StringBuilder sb = new StringBuilder("newInvite(");
+                        for (int i = 0; i < pts.length; i++) {
+                            if (i > 0) sb.append(", ");
+                            sb.append(pts[i].getSimpleName());
+                        }
+                        sb.append(")");
+                        Log.d(TAG, "Found: " + sb);
+                    }
+                }
+
                 com.telnyx.webrtc.sdk.Call callObj = telnyxClient.newInvite(
                     "2ndCall",            // callerName
                     callerNumber,         // callerNumber
@@ -169,11 +187,42 @@ public class VoIPBridge {
                 if (callObj != null) {
                     activeCallId = callObj.getCallId();
                     Log.d(TAG, "Call initiated, callId: " + activeCallId);
+                    sendEvent("calling", destinationNumber);
+                } else {
+                    Log.e(TAG, "newInvite returned null");
+                    sendEvent("error", "Call returned null — SDK may not be connected");
                 }
-                sendEvent("calling", destinationNumber);
             } catch (Exception e) {
                 Log.e(TAG, "Call failed: " + e.getMessage(), e);
                 sendEvent("error", "Call failed: " + e.getMessage());
+                // Try reflection as last resort
+                try {
+                    for (java.lang.reflect.Method m : telnyxClient.getClass().getMethods()) {
+                        if (m.getName().equals("newInvite")) {
+                            Class<?>[] pts = m.getParameterTypes();
+                            Object[] args = new Object[pts.length];
+                            int strIdx = 0;
+                            String[] strs = {"2ndCall", callerNumber, destinationNumber, ""};
+                            for (int i = 0; i < pts.length; i++) {
+                                if (pts[i] == String.class && strIdx < strs.length) {
+                                    args[i] = strs[strIdx++];
+                                } else if (pts[i] == boolean.class) {
+                                    args[i] = false;
+                                } else {
+                                    args[i] = null;
+                                }
+                            }
+                            Object result = m.invoke(telnyxClient, args);
+                            if (result != null) {
+                                Log.d(TAG, "Reflection call succeeded");
+                                sendEvent("calling", destinationNumber);
+                            }
+                            break;
+                        }
+                    }
+                } catch (Exception e2) {
+                    Log.e(TAG, "Reflection call also failed: " + e2.getMessage());
+                }
             }
         }).start();
     }
