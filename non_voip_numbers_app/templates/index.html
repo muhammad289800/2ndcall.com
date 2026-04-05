@@ -1964,6 +1964,10 @@ async function handleDialpadCall() {
   const from = document.getElementById("dp-from").value;
   if (!from) { setStatus("dp-status","No number to call from. Get a number first.", true); return; }
 
+  // Save personal number to localStorage BEFORE any call attempt
+  const personalNum = (document.getElementById("dp-personal").value || "").trim();
+  if (personalNum) localStorage.setItem("2c_personal_phone", personalNum);
+
   // Try Native VoIP first (Android app — best audio quality)
   if (_nativeVoIPReady && typeof NativeVoIP !== 'undefined') {
     closeModal("modal-dialpad");
@@ -1993,12 +1997,11 @@ async function handleDialpadCall() {
   // API call with call overlay (used on mobile and when WebRTC unavailable)
   const provider = (S.numbers.find(n => n.phone_number === from) || {}).provider || "telnyx";
   const toNum = dialpadNum;
-  const personalNum = document.getElementById("dp-personal").value.trim();
-  if (personalNum) localStorage.setItem("2c_personal_phone", personalNum);
+  const savedPersonal = personalNum || localStorage.getItem("2c_personal_phone") || "";
 
   // Without personal number AND without WebRTC, live audio isn't possible
-  if (!personalNum) {
-    setStatus("dp-status", "Enter your personal phone number above for live audio calls. WebRTC is not available on this browser.", true);
+  if (!savedPersonal) {
+    setStatus("dp-status", "Enter your personal phone number above for live audio calls.", true);
     return;
   }
 
@@ -2007,7 +2010,7 @@ async function handleDialpadCall() {
     const callBody = {
       provider, from_number: from, to_number: toNum,
       say_text: "", estimated_minutes: 1,
-      personal_number: personalNum,
+      personal_number: savedPersonal,
     };
     const result = await api("/api/calls/start", { method:"POST", body: JSON.stringify(callBody)});
     closeModal("modal-dialpad");
@@ -3488,17 +3491,6 @@ function makeNativeVoIPCall(fromNumber, toNumber) {
 async function makeWebRTCCall(fromNumber, toNumber) {
   if (!_rtcClient) { toast("WebRTC not initialized.", "error"); return; }
 
-  // Request microphone permission on user gesture (required for mobile browsers)
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    stream.getTracks().forEach(t => t.stop()); // release immediately, SDK will request again
-  } catch(micErr) {
-    console.warn("[WebRTC] Microphone denied:", micErr);
-    toast("Microphone permission required for live calls", "error");
-    fallbackToAPICall(fromNumber, toNumber);
-    return;
-  }
-
   _webrtcCallFrom = fromNumber;
   _webrtcCallTo = toNumber;
   _webrtcCallStartTime = Date.now();
@@ -3531,11 +3523,13 @@ async function makeWebRTCCall(fromNumber, toNumber) {
 async function fallbackToAPICall(fromNumber, toNumber) {
   _fallbackInProgress = true;
   const provider = (S.numbers.find(n => n.phone_number === fromNumber) || {}).provider || "telnyx";
-  const personalNum = localStorage.getItem("2c_personal_phone") || "";
+  // Check both the current input field and localStorage for personal number
+  const dpPersonal = document.getElementById("dp-personal");
+  const personalNum = (dpPersonal && dpPersonal.value.trim()) || localStorage.getItem("2c_personal_phone") || "";
+  if (personalNum) localStorage.setItem("2c_personal_phone", personalNum);
 
   if (!personalNum) {
-    // Can't do live audio without personal number — inform user
-    updateCallStatus("WebRTC failed. Enter your personal phone in the dialpad for live calls.");
+    updateCallStatus("Enter your personal phone in the dialpad for live calls.");
     toast("Add your personal phone number in the dialpad for live audio calls", "error");
     setTimeout(endCallUI, 4000);
     _fallbackInProgress = false;
