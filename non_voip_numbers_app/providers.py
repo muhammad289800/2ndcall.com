@@ -886,6 +886,8 @@ def build_providers() -> dict[str, BaseProvider]:
     providers: dict[str, BaseProvider] = {
         "telnyx": TelnyxProvider(),
         "signalwire": SignalWireProvider(),
+        "twilio": TwilioProvider(),
+        "mock": MockProvider(),
     }
     return providers
 

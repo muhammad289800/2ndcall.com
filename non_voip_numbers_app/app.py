@@ -12,6 +12,7 @@ from xml.sax.saxutils import escape as xml_escape
 import requests as http_requests
 import stripe
 from flask import Flask, Response, jsonify, render_template, request, send_from_directory, session
+from flask_cors import CORS
 
 from .payments import (
     get_supported_networks,
@@ -60,8 +61,17 @@ def create_app() -> Flask:
         _secret = os.urandom(32).hex()
     app.secret_key = _secret
     app.config["SESSION_COOKIE_HTTPONLY"] = True
-    app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+    app.config["SESSION_COOKIE_SAMESITE"] = "None" if os.environ.get("RAILWAY_ENVIRONMENT") else "Lax"
     app.config["SESSION_COOKIE_SECURE"] = os.environ.get("FLASK_ENV") == "production" or os.environ.get("RAILWAY_ENVIRONMENT") is not None
+
+    # CORS for mobile app (Capacitor webview origins)
+    CORS(app, supports_credentials=True, origins=[
+        "capacitor://localhost",
+        "https://localhost",
+        "http://localhost",
+        "http://localhost:*",
+        "https://2ndcallcom-production-dcdb.up.railway.app",
+    ])
 
     # Prevent caching of HTML pages so updates are always served fresh
     @app.after_request
@@ -636,6 +646,7 @@ def create_app() -> Flask:
                 "crypto_configured": crypto_configured(),
                 "nowpayments_configured": bool(os.environ.get("NOWPAYMENTS_API_KEY", "").strip()),
                 "stripe_configured": bool(os.environ.get("STRIPE_SECRET_KEY", "").strip()),
+                "stripe_publishable_key": os.environ.get("STRIPE_PUBLISHABLE_KEY", "").strip() or None,
                 "networks": get_supported_networks() if crypto_configured() else [],
             }
         )
@@ -1113,7 +1124,16 @@ def create_app() -> Flask:
     def list_calls():
         direction = request.args.get("direction")
         limit = parse_int(request.args.get("limit"), 100, 1, 500)
-        return jsonify({"calls": storage.list_call_logs(limit=limit, direction=direction)})
+        is_admin = _is_admin()
+        user_numbers: list[str] | None = None
+        if not is_admin:
+            current_user = _get_session_user()
+            uid = current_user["id"] if current_user else None
+            nums = storage.list_numbers(user_id=uid, admin=False)
+            user_numbers = [n["phone_number"] for n in nums]
+        return jsonify({"calls": storage.list_call_logs(
+            limit=limit, direction=direction, user_numbers=user_numbers
+        )})
 
     @app.post("/api/calls/start")
     @require_auth
@@ -1613,12 +1633,19 @@ def create_app() -> Flask:
     @app.get("/api/export")
     @require_auth
     def export_data():
+        current_user = _get_session_user()
+        uid = current_user["id"] if current_user else None
+        is_admin = _is_admin()
+        user_numbers: list[str] | None = None
+        if not is_admin and uid:
+            nums = storage.list_numbers(user_id=uid, admin=False)
+            user_numbers = [n["phone_number"] for n in nums]
         return jsonify(
             {
-                "numbers": storage.list_numbers(),
-                "wallet_balance": storage.get_wallet_balance(),
-                "messages": storage.list_message_logs(limit=200),
-                "calls": storage.list_call_logs(limit=200),
+                "numbers": storage.list_numbers(user_id=uid, admin=is_admin),
+                "wallet_balance": storage.get_wallet_balance(user_id=uid),
+                "messages": storage.list_message_logs(limit=200, user_numbers=user_numbers),
+                "calls": storage.list_call_logs(limit=200, user_numbers=user_numbers),
                 "pricing": provider_pricing,
             }
         )

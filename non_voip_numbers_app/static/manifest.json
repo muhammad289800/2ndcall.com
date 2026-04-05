@@ -1,27 +1,32 @@
 {
   "name": "2ndCall — Virtual Phone",
   "short_name": "2ndCall",
-  "description": "Virtual phone numbers for SMS and calls",
-  "start_url": "/",
+  "description": "Virtual phone numbers for SMS verification, calls, and messaging. Non-VoIP numbers starting at $2/month.",
+  "start_url": "/app",
   "display": "standalone",
-  "background_color": "#0d1117",
-  "theme_color": "#1f6feb",
+  "background_color": "#030712",
+  "theme_color": "#030712",
   "orientation": "portrait",
   "scope": "/",
+  "id": "/app",
+  "lang": "en",
+  "dir": "ltr",
   "icons": [
-    { "src": "/static/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
-    { "src": "/static/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+    { "src": "/static/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/static/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "/static/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/static/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
   ],
   "categories": ["communication", "utilities"],
   "shortcuts": [
     {
       "name": "New Message",
-      "url": "/?action=new-message",
+      "url": "/app?action=new-message",
       "icons": [{ "src": "/static/icons/icon-192.png", "sizes": "192x192" }]
     },
     {
       "name": "Wallet",
-      "url": "/?nav=wallet",
+      "url": "/app?nav=wallet",
       "icons": [{ "src": "/static/icons/icon-192.png", "sizes": "192x192" }]
     }
   ]

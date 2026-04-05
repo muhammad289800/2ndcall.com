@@ -425,27 +425,36 @@ class Storage:
             output.append(row_dict)
         return output
 
-    def list_call_logs(self, limit: int = 100, direction: str | None = None) -> list[dict[str, Any]]:
+    def list_call_logs(
+        self,
+        limit: int = 100,
+        direction: str | None = None,
+        user_numbers: list[str] | None = None,
+    ) -> list[dict[str, Any]]:
         with self._connect() as conn:
+            clauses: list[str] = []
+            params: list[Any] = []
             if direction:
-                rows = conn.execute(
-                    """
-                    SELECT * FROM call_logs
-                    WHERE direction = ?
-                    ORDER BY created_at DESC
-                    LIMIT ?
-                    """,
-                    (direction, limit),
-                ).fetchall()
-            else:
-                rows = conn.execute(
-                    """
-                    SELECT * FROM call_logs
-                    ORDER BY created_at DESC
-                    LIMIT ?
-                    """,
-                    (limit,),
-                ).fetchall()
+                clauses.append("direction = ?")
+                params.append(direction)
+            if user_numbers is not None:
+                if not user_numbers:
+                    return []
+                placeholders = ",".join("?" for _ in user_numbers)
+                clauses.append(f"(from_number IN ({placeholders}) OR to_number IN ({placeholders}))")
+                params.extend(user_numbers)
+                params.extend(user_numbers)
+            where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
+            params.append(limit)
+            rows = conn.execute(
+                f"""
+                SELECT * FROM call_logs
+                {where}
+                ORDER BY created_at DESC
+                LIMIT ?
+                """,
+                params,
+            ).fetchall()
         output: list[dict[str, Any]] = []
         for row in rows:
             row_dict = dict(row)
