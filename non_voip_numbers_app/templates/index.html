@@ -1971,11 +1971,23 @@ async function handleDialpadCall() {
     return;
   }
 
-  // Try WebRTC second (desktop browser)
+  // Try WebRTC (works on both desktop and mobile browsers)
   if (_rtcClient) {
     closeModal("modal-dialpad");
     makeWebRTCCall(from, dialpadNum);
     return;
+  }
+
+  // If WebRTC not initialized yet, try now (mobile browsers may need user gesture)
+  if (!_rtcClient && !_nativeVoIPReady) {
+    try {
+      await initWebRTC();
+      if (_rtcClient) {
+        closeModal("modal-dialpad");
+        makeWebRTCCall(from, dialpadNum);
+        return;
+      }
+    } catch {}
   }
 
   // API call with call overlay (used on mobile and when WebRTC unavailable)
@@ -1983,13 +1995,20 @@ async function handleDialpadCall() {
   const toNum = dialpadNum;
   const personalNum = document.getElementById("dp-personal").value.trim();
   if (personalNum) localStorage.setItem("2c_personal_phone", personalNum);
-  setStatus("dp-status", personalNum ? "Calling your phone first…" : "Placing call…");
+
+  // Without personal number AND without WebRTC, live audio isn't possible
+  if (!personalNum) {
+    setStatus("dp-status", "Enter your personal phone number above for live audio calls. WebRTC is not available on this browser.", true);
+    return;
+  }
+
+  setStatus("dp-status", "Calling your phone first…");
   try {
     const callBody = {
       provider, from_number: from, to_number: toNum,
-      say_text: "", estimated_minutes: 1
+      say_text: "", estimated_minutes: 1,
+      personal_number: personalNum,
     };
-    if (personalNum) callBody.personal_number = personalNum;
     const result = await api("/api/calls/start", { method:"POST", body: JSON.stringify(callBody)});
     closeModal("modal-dialpad");
     // Show call overlay
@@ -3096,14 +3115,20 @@ let _incomingPollTimer = null;
 let _pendingIncoming = null;
 
 async function initWebRTC() {
-  // Load Telnyx WebRTC SDK dynamically
-  // Load Telnyx WebRTC SDK from our static files
-  if (typeof TelnyxRTC === "undefined") {
+  // Load Telnyx WebRTC SDK from CDN (more reliable than local bundle)
+  if (typeof TelnyxRTC === "undefined" && !(window.TelnyxWebRTC && window.TelnyxWebRTC.TelnyxRTC)) {
     try {
       await new Promise((resolve, reject) => {
         const s = document.createElement("script");
-        s.src = "/static/telnyx-webrtc.js";
-        s.onload = resolve; s.onerror = reject;
+        s.src = "https://unpkg.com/@telnyx/webrtc@2/lib/bundle.js";
+        s.onload = resolve;
+        s.onerror = () => {
+          // Fallback to local copy if CDN fails
+          const s2 = document.createElement("script");
+          s2.src = "/static/telnyx-webrtc.js";
+          s2.onload = resolve; s2.onerror = reject;
+          document.head.appendChild(s2);
+        };
         document.head.appendChild(s);
       });
     } catch { console.warn("[WebRTC] Failed to load SDK"); return; }
@@ -3460,8 +3485,20 @@ function makeNativeVoIPCall(fromNumber, toNumber) {
   NativeVoIP.call(toNumber, fromNumber);
 }
 
-function makeWebRTCCall(fromNumber, toNumber) {
+async function makeWebRTCCall(fromNumber, toNumber) {
   if (!_rtcClient) { toast("WebRTC not initialized.", "error"); return; }
+
+  // Request microphone permission on user gesture (required for mobile browsers)
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    stream.getTracks().forEach(t => t.stop()); // release immediately, SDK will request again
+  } catch(micErr) {
+    console.warn("[WebRTC] Microphone denied:", micErr);
+    toast("Microphone permission required for live calls", "error");
+    fallbackToAPICall(fromNumber, toNumber);
+    return;
+  }
+
   _webrtcCallFrom = fromNumber;
   _webrtcCallTo = toNumber;
   _webrtcCallStartTime = Date.now();
@@ -3483,6 +3520,8 @@ function makeWebRTCCall(fromNumber, toNumber) {
     _activeCall = _rtcClient.newCall({
       destinationNumber: toNumber,
       callerNumber: fromNumber,
+      audio: true,
+      video: false,
     });
   } catch(e) {
     fallbackToAPICall(fromNumber, toNumber);
@@ -3493,17 +3532,27 @@ async function fallbackToAPICall(fromNumber, toNumber) {
   _fallbackInProgress = true;
   const provider = (S.numbers.find(n => n.phone_number === fromNumber) || {}).provider || "telnyx";
   const personalNum = localStorage.getItem("2c_personal_phone") || "";
-  const callBody = { provider, from_number: fromNumber, to_number: toNumber, say_text: "", estimated_minutes: 1 };
-  if (personalNum) callBody.personal_number = personalNum;
+
+  if (!personalNum) {
+    // Can't do live audio without personal number — inform user
+    updateCallStatus("WebRTC failed. Enter your personal phone in the dialpad for live calls.");
+    toast("Add your personal phone number in the dialpad for live audio calls", "error");
+    setTimeout(endCallUI, 4000);
+    _fallbackInProgress = false;
+    return;
+  }
+
+  updateCallStatus("Calling your phone…");
+  const callBody = {
+    provider, from_number: fromNumber, to_number: toNumber,
+    say_text: "", estimated_minutes: 1,
+    personal_number: personalNum,
+  };
   try {
     await api("/api/calls/start", { method:"POST", body: JSON.stringify(callBody)});
   } catch(e2) {
-    // Call might have gone through even if API response fails
-    // Don't close overlay — show status and let poll timer check
     console.warn("Call API error (call may still connect):", e2.message);
   }
-  // Always show the overlay regardless of API response
-  // Keep _fallbackInProgress true to block WebRTC hangup events
   showOutboundCallUI(toNumber);
 }
 
