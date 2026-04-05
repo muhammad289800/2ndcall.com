@@ -1237,11 +1237,8 @@
     </div>
     <div class="modal-body">
 
-      <!-- Step 1: Choose amount + network -->
+      <!-- Step 1: Choose amount + method -->
       <div id="topup-step-choose">
-        <p style="color:var(--muted);font-size:13px;margin-bottom:16px;">
-          Send USDT to our wallet address. Your balance is credited automatically once confirmed on-chain.
-        </p>
         <div class="quick-amounts" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;">
           <button class="btn-amount" data-amt="5">$5</button>
           <button class="btn-amount" data-amt="10">$10</button>
@@ -1253,10 +1250,32 @@
           <label class="form-label">Custom amount (USD)</label>
           <input class="form-input" type="number" id="topup-amount-input" min="1" step="0.01" placeholder="Enter amount" style="margin-bottom:0;" />
         </div>
-        <div class="form-field" style="margin-top:12px;">
+
+        <!-- Payment method selector -->
+        <div id="topup-method-selector" style="margin-top:14px;">
+          <label class="form-label">Payment Method</label>
+          <div style="display:flex;gap:8px;">
+            <button class="btn-method active" id="method-card" data-method="nowpayments"
+              style="flex:1;padding:12px;border-radius:10px;border:2px solid var(--accent-h);background:rgba(59,130,246,.08);cursor:pointer;text-align:center;">
+              <div style="font-size:20px;margin-bottom:4px;">&#128179;</div>
+              <div style="font-size:13px;font-weight:700;color:var(--text);">Card / Crypto</div>
+              <div style="font-size:11px;color:var(--muted);">Visa, MC, Apple Pay + 200 coins</div>
+            </button>
+            <button class="btn-method" id="method-direct" data-method="direct"
+              style="flex:1;padding:12px;border-radius:10px;border:2px solid var(--border);background:var(--surface2);cursor:pointer;text-align:center;">
+              <div style="font-size:20px;margin-bottom:4px;">&#9939;</div>
+              <div style="font-size:13px;font-weight:700;color:var(--text);">Direct USDT</div>
+              <div style="font-size:11px;color:var(--muted);">Send USDT directly to wallet</div>
+            </button>
+          </div>
+        </div>
+
+        <!-- Network selector (only for direct crypto) -->
+        <div class="form-field" id="topup-network-field" style="margin-top:12px;display:none;">
           <label class="form-label">Network</label>
           <select class="form-input" id="topup-network" style="margin-bottom:0;"></select>
         </div>
+
         <button class="btn-primary" id="topup-proceed-btn" style="width:100%;margin-top:14px;">
           Continue to Payment
         </button>
@@ -2535,6 +2554,7 @@ function renderWallet() {
 // ── Checkout / Add Funds ──────────────────────────────────────────────
 let _checkoutNetworks = [];
 let _checkoutOrderId = null;
+let _selectedPayMethod = "nowpayments"; // default to card/crypto
 document.getElementById("open-topup-btn").addEventListener("click", () => openTopupModal());
 
 function openTopupModal() {
@@ -2543,6 +2563,7 @@ function openTopupModal() {
   document.getElementById("topup-choose-status").textContent = "";
   document.getElementById("topup-amount-input").value = "";
   document.querySelectorAll(".btn-amount").forEach(b => b.classList.remove("active"));
+
   // Populate network selector from wallet data
   _checkoutNetworks = S.wallet.networks || [];
   const netSel = document.getElementById("topup-network");
@@ -2553,8 +2574,57 @@ function openTopupModal() {
   } else {
     netSel.innerHTML = '<option value="">No networks configured</option>';
   }
+
+  // Show/hide payment method options based on config
+  const methodSel = document.getElementById("topup-method-selector");
+  const cardBtn = document.getElementById("method-card");
+  const directBtn = document.getElementById("method-direct");
+  const hasNowPay = S.wallet.nowpayments_configured;
+  const hasCrypto = S.wallet.crypto_configured;
+
+  if (hasNowPay && hasCrypto) {
+    methodSel.style.display = "";
+    _selectPayMethod("nowpayments");
+  } else if (hasNowPay) {
+    methodSel.style.display = "";
+    cardBtn.style.display = "";
+    directBtn.style.display = "none";
+    _selectPayMethod("nowpayments");
+  } else if (hasCrypto) {
+    methodSel.style.display = "none";
+    _selectPayMethod("direct");
+  } else {
+    methodSel.style.display = "none";
+    _selectPayMethod("direct");
+  }
+
   document.getElementById("modal-topup").classList.remove("hidden");
 }
+
+function _selectPayMethod(method) {
+  _selectedPayMethod = method;
+  const cardBtn = document.getElementById("method-card");
+  const directBtn = document.getElementById("method-direct");
+  const networkField = document.getElementById("topup-network-field");
+  if (method === "nowpayments") {
+    cardBtn.style.borderColor = "var(--accent-h)";
+    cardBtn.style.background = "rgba(59,130,246,.08)";
+    directBtn.style.borderColor = "var(--border)";
+    directBtn.style.background = "var(--surface2)";
+    networkField.style.display = "none";
+  } else {
+    directBtn.style.borderColor = "var(--accent-h)";
+    directBtn.style.background = "rgba(59,130,246,.08)";
+    cardBtn.style.borderColor = "var(--border)";
+    cardBtn.style.background = "var(--surface2)";
+    networkField.style.display = "";
+  }
+}
+
+// Payment method toggle buttons
+document.getElementById("method-card").addEventListener("click", () => _selectPayMethod("nowpayments"));
+document.getElementById("method-direct").addEventListener("click", () => _selectPayMethod("direct"));
+
 // Quick amount buttons
 document.querySelectorAll(".btn-amount").forEach(btn => {
   btn.addEventListener("click", () => {
@@ -2563,13 +2633,54 @@ document.querySelectorAll(".btn-amount").forEach(btn => {
     document.getElementById("topup-amount-input").value = btn.dataset.amt;
   });
 });
+
 document.getElementById("topup-proceed-btn").addEventListener("click", async () => {
   const amount = parseFloat(document.getElementById("topup-amount-input").value || 0);
-  const network = document.getElementById("topup-network").value;
   const statusEl = document.getElementById("topup-choose-status");
   if (!amount || amount < 1) {
     statusEl.style.color = "var(--red)"; statusEl.textContent = "Minimum amount is $1.00"; return;
   }
+
+  // ── NOWPayments card/crypto flow ──
+  if (_selectedPayMethod === "nowpayments") {
+    statusEl.style.color = "var(--muted)"; statusEl.textContent = "Creating invoice…";
+    document.getElementById("topup-proceed-btn").disabled = true;
+    try {
+      const d = await api("/api/wallet/create-invoice", {
+        method: "POST", body: JSON.stringify({ amount })
+      });
+      _checkoutOrderId = d.order.order_id;
+      // Open NOWPayments hosted checkout in new tab
+      if (d.invoice_url) {
+        window.open(d.invoice_url, "_blank");
+      }
+      // Switch to waiting state in modal
+      document.getElementById("topup-step-choose").style.display = "none";
+      document.getElementById("topup-step-checkout").style.display = "";
+      document.getElementById("checkout-amount-display").textContent = `$${amount.toFixed(2)}`;
+      document.getElementById("checkout-network-label").textContent = "via Card / Crypto (NOWPayments)";
+      document.getElementById("checkout-address").textContent = d.invoice_url || "Checkout opened in new tab";
+      document.getElementById("checkout-net-warn").textContent = "NOWPayments";
+      document.getElementById("checkout-order-id").textContent = `Order: ${d.order.order_id}`;
+      document.getElementById("checkout-qr").src =
+        `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(d.invoice_url)}&bgcolor=ffffff&color=000000`;
+      document.getElementById("checkout-status-area").style.display = "";
+      document.getElementById("checkout-success").style.display = "none";
+      document.getElementById("checkout-tx-hash").value = "";
+      document.getElementById("checkout-status-text").textContent = "Complete payment in the checkout tab — we're watching for confirmation…";
+      document.getElementById("checkout-spinner").style.display = "";
+      // Poll for IPN confirmation
+      startOrderPolling(d.order.order_id, amount);
+    } catch(e) {
+      statusEl.style.color = "var(--red)"; statusEl.textContent = e.message;
+    } finally {
+      document.getElementById("topup-proceed-btn").disabled = false;
+    }
+    return;
+  }
+
+  // ── Direct USDT flow (existing) ──
+  const network = document.getElementById("topup-network").value;
   if (!network) {
     statusEl.style.color = "var(--red)"; statusEl.textContent = "No payment network available."; return;
   }

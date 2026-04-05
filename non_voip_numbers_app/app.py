@@ -633,6 +633,7 @@ def create_app() -> Flask:
                 "transactions": storage.list_wallet_transactions(limit=limit, user_id=uid),
                 "payment_orders": storage.list_payment_orders(user_id=uid, limit=20),
                 "crypto_configured": crypto_configured(),
+                "nowpayments_configured": bool(os.environ.get("NOWPAYMENTS_API_KEY", "").strip()),
                 "networks": get_supported_networks() if crypto_configured() else [],
             }
         )
@@ -1719,6 +1720,132 @@ def create_app() -> Flask:
             "pending_orders": len(pending),
             "matched": len(matches),
         })
+
+    # ── NOWPayments Integration ──────────────────────────────────────────
+    NOWPAY_API_KEY = os.environ.get("NOWPAYMENTS_API_KEY", "").strip()
+    NOWPAY_IPN_SECRET = os.environ.get("NOWPAYMENTS_IPN_SECRET", "").strip()
+    NOWPAY_BASE = "https://api.nowpayments.io/v1"
+
+    def _nowpay_configured() -> bool:
+        return bool(NOWPAY_API_KEY)
+
+    @app.post("/api/wallet/create-invoice")
+    @require_auth
+    def wallet_create_invoice():
+        """Create a NOWPayments invoice for card/crypto checkout."""
+        if not _nowpay_configured():
+            return jsonify({"error": "NOWPayments is not configured."}), 503
+        u = _get_session_user()
+        body = payload()
+        amount = parse_float(body.get("amount"), 0.0)
+        if amount < 1.0:
+            return jsonify({"error": "Minimum top-up is $1.00 USD."}), 400
+
+        order_id = f"2C-{uuid.uuid4().hex[:12].upper()}"
+        order = storage.create_payment_order(
+            order_id=order_id,
+            amount_usd=amount,
+            currency="USDT",
+            deeplink="",
+            paydify_txn_id="",
+            user_id=u["id"] if u else None,
+        )
+
+        # Build callback URL from request host
+        base_url = request.url_root.rstrip("/")
+        try:
+            resp = http_requests.post(
+                f"{NOWPAY_BASE}/invoice",
+                headers={
+                    "x-api-key": NOWPAY_API_KEY,
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "price_amount": amount,
+                    "price_currency": "usd",
+                    "order_id": order_id,
+                    "order_description": f"2ndCall Wallet Top-Up ${amount:.2f}",
+                    "ipn_callback_url": f"{base_url}/webhooks/nowpayments/ipn",
+                    "success_url": f"{base_url}/?topup_success={order_id}",
+                    "cancel_url": f"{base_url}/?topup_cancel={order_id}",
+                    "is_fee_paid_by_user": False,
+                },
+                timeout=15,
+            )
+            resp.raise_for_status()
+            inv = resp.json()
+        except Exception as exc:
+            storage.mark_payment_order_failed(order_id)
+            return jsonify({"error": f"NOWPayments error: {exc}"}), 502
+
+        invoice_url = inv.get("invoice_url", "")
+        invoice_id = str(inv.get("id", ""))
+
+        # Store NOWPayments invoice ID in metadata
+        storage.update_payment_order_metadata(order_id, {
+            "nowpayments_invoice_id": invoice_id,
+            "payment_method": "nowpayments",
+        })
+
+        return jsonify({
+            "ok": True,
+            "order": order,
+            "invoice_url": invoice_url,
+            "invoice_id": invoice_id,
+        })
+
+    @app.post("/webhooks/nowpayments/ipn")
+    def nowpayments_ipn():
+        """IPN callback from NOWPayments — credits wallet on confirmed payment."""
+        raw_body = request.get_data(as_text=True)
+        data = request.get_json(silent=True) or {}
+
+        # Verify HMAC signature if IPN secret is configured
+        if NOWPAY_IPN_SECRET:
+            sig_header = request.headers.get("x-nowpayments-sig", "")
+            if not sig_header:
+                return jsonify({"error": "Missing signature"}), 401
+            import json
+            sorted_data = json.dumps(data, sort_keys=True, separators=(",", ":"))
+            expected_sig = hmac.new(
+                NOWPAY_IPN_SECRET.encode(), sorted_data.encode(), hashlib.sha512
+            ).hexdigest()
+            if not hmac.compare_digest(sig_header, expected_sig):
+                return jsonify({"error": "Invalid signature"}), 401
+
+        payment_status = data.get("payment_status", "")
+        order_id = data.get("order_id", "")
+        actually_paid = parse_float(data.get("actually_paid"), 0.0)
+        pay_currency = data.get("pay_currency", "").upper()
+        outcome_amount = parse_float(data.get("outcome_amount"), 0.0)
+        price_amount = parse_float(data.get("price_amount"), 0.0)
+
+        if not order_id:
+            return jsonify({"ok": True, "message": "No order_id, ignoring."})
+
+        order = storage.get_payment_order(order_id)
+        if not order:
+            return jsonify({"ok": True, "message": "Order not found, ignoring."})
+
+        if order["status"] == "paid":
+            return jsonify({"ok": True, "message": "Already paid."})
+
+        # NOWPayments statuses: waiting, confirming, confirmed, sending,
+        # partially_paid, finished, failed, refunded, expired
+        if payment_status in ("finished", "confirmed"):
+            # Credit the USD amount the user originally requested
+            credit_amount = price_amount if price_amount > 0 else float(order.get("amount_usd", 0))
+            storage.mark_payment_order_paid(
+                order_id=order_id,
+                paydify_txn_id=str(data.get("payment_id", "")),
+                tx_hash=str(data.get("payment_id", "")),
+                from_address=f"nowpayments:{pay_currency}",
+                paid_amount=credit_amount,
+            )
+        elif payment_status in ("failed", "refunded", "expired"):
+            storage.mark_payment_order_failed(order_id)
+
+        return jsonify({"ok": True})
 
     return app
 

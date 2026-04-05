@@ -759,6 +759,22 @@ class Storage:
             )
         return self.get_payment_order(order_id)
 
+    def update_payment_order_metadata(self, order_id: str, extra: dict[str, Any]) -> None:
+        """Merge extra keys into the order's metadata_json."""
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT metadata_json FROM payment_orders WHERE order_id=?", (order_id,)
+            ).fetchone()
+            if not row:
+                return
+            import json as _json
+            existing = _json.loads(row["metadata_json"] or "{}")
+            existing.update(extra)
+            conn.execute(
+                "UPDATE payment_orders SET metadata_json=? WHERE order_id=?",
+                (_json.dumps(existing), order_id),
+            )
+
     def mark_payment_order_failed(self, order_id: str) -> None:
         with self._connect() as conn:
             conn.execute(
