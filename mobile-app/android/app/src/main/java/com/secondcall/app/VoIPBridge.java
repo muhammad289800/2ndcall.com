@@ -6,27 +6,23 @@ import android.util.Log;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebView;
 
-import java.lang.reflect.Constructor;
-import java.lang.reflect.Method;
+import java.util.Map;
 import java.util.UUID;
 
 /**
  * Native VoIP bridge between WebView JavaScript and Telnyx Android Voice SDK v3.5.
- * Uses reflection to avoid compile-time Kotlin dependency issues.
- *
- * SDK API (Kotlin):
- *   TelnyxClient(context) → connect(credentialConfig) → newInvite(...)
- *   acceptCall(callId, destNumber) / endCall(callId)
+ * Direct SDK imports — no reflection needed.
  */
 public class VoIPBridge {
     private static final String TAG = "VoIPBridge";
 
     private final Context context;
     private final WebView webView;
-    private Object telnyxClient;
+    private com.telnyx.webrtc.sdk.TelnyxClient telnyxClient;
     private boolean isLoggedIn = false;
     private boolean isMuted = false;
     private UUID activeCallId = null;
+    private volatile boolean observerRunning = false;
 
     public VoIPBridge(Context context, WebView webView) {
         this.context = context;
@@ -39,73 +35,35 @@ public class VoIPBridge {
         new Thread(() -> {
             try {
                 // 1. Create TelnyxClient
-                Class<?> clientClass = Class.forName("com.telnyx.webrtc.sdk.TelnyxClient");
-                telnyxClient = clientClass.getConstructor(Context.class).newInstance(context);
+                telnyxClient = new com.telnyx.webrtc.sdk.TelnyxClient(context);
 
-                // 2. Build CredentialConfig
+                // 2. Build CredentialConfig — try direct constructor, fall back to reflection
                 Object config = buildCredentialConfig(username, password);
                 if (config == null) {
                     sendEvent("error", "Failed to create CredentialConfig");
                     return;
                 }
 
-                // 3. connect(credentialConfig) — this connects AND logs in
-                Class<?> configClass = config.getClass();
-                boolean connected = false;
-
-                // Try connect(TxServerConfiguration, CredentialConfig, String, boolean)
-                for (Method m : clientClass.getMethods()) {
-                    if (m.getName().equals("connect")) {
-                        Class<?>[] pt = m.getParameterTypes();
-                        // Look for the overload that takes CredentialConfig
-                        if (pt.length >= 2 && pt[1].isAssignableFrom(configClass)) {
-                            Object[] args = new Object[pt.length];
-                            // First param: TxServerConfiguration — create default
-                            try {
-                                Class<?> serverConfigClass = Class.forName("com.telnyx.webrtc.sdk.TxServerConfiguration");
-                                args[0] = serverConfigClass.getConstructor().newInstance();
-                            } catch (Exception e) {
-                                args[0] = null;
-                            }
-                            args[1] = config;
-                            // Fill remaining with defaults
-                            for (int i = 2; i < pt.length; i++) {
-                                if (pt[i] == boolean.class) args[i] = true; // autoLogin
-                                else args[i] = null;
-                            }
-                            m.invoke(telnyxClient, args);
-                            connected = true;
-                            break;
-                        }
-                    }
+                // 3. Connect with credential config
+                try {
+                    telnyxClient.connect(
+                        new com.telnyx.webrtc.sdk.TxServerConfiguration(),
+                        (com.telnyx.webrtc.sdk.CredentialConfig) config,
+                        null,   // txPushMetaData
+                        true    // autoLogin
+                    );
+                } catch (ClassCastException e) {
+                    // Config might be from a different class path — try credentialLogin
+                    Log.w(TAG, "connect() cast failed, trying credentialLogin...");
+                    telnyxClient.credentialLogin((com.telnyx.webrtc.sdk.CredentialConfig) config);
                 }
 
-                // Fallback: try credentialLogin(config) separately
-                if (!connected) {
-                    try {
-                        Method loginMethod = clientClass.getMethod("credentialLogin", configClass);
-                        loginMethod.invoke(telnyxClient, config);
-                        connected = true;
-                    } catch (NoSuchMethodException e) {
-                        // Try with base class
-                        for (Method m : clientClass.getMethods()) {
-                            if (m.getName().equals("credentialLogin") && m.getParameterCount() == 1) {
-                                m.invoke(telnyxClient, config);
-                                connected = true;
-                                break;
-                            }
-                        }
-                    }
-                }
+                Log.d(TAG, "Connect called, starting observers...");
+                observerRunning = true;
+                startReadyWatcher();
+                startCallStateObserver();
 
-                if (connected) {
-                    Log.d(TAG, "Connect called, starting state observer...");
-                    startReadyWatcher();
-                    startCallStateObserver();
-                } else {
-                    sendEvent("error", "Could not find connect or credentialLogin method");
-                }
-            } catch (ClassNotFoundException e) {
+            } catch (NoClassDefFoundError e) {
                 Log.w(TAG, "Telnyx SDK not available: " + e.getMessage());
                 sendEvent("error", "Native VoIP SDK not loaded. Using web calling.");
             } catch (Exception e) {
@@ -113,68 +71,6 @@ public class VoIPBridge {
                 sendEvent("error", "Login failed: " + e.getMessage());
             }
         }).start();
-    }
-
-    private Object buildCredentialConfig(String username, String password) {
-        // Try both package paths
-        String[] classNames = {
-            "com.telnyx.webrtc.sdk.CredentialConfig",
-            "com.telnyx.webrtc.sdk.model.CredentialConfig"
-        };
-
-        for (String className : classNames) {
-            try {
-                Class<?> configClass = Class.forName(className);
-
-                // Kotlin data classes with default params generate a constructor with all params
-                // CredentialConfig(sipUser, sipPassword, sipCallerIDName?, sipCallerIDNumber?,
-                //                  fcmToken?, ringtone?, ringBackTone?, logLevel, customLogger?,
-                //                  autoReconnect, debug, reconnectionTimeout, region, fallbackOnRegionFailure)
-                for (Constructor<?> ctor : configClass.getConstructors()) {
-                    Class<?>[] params = ctor.getParameterTypes();
-                    Log.d(TAG, "CredentialConfig constructor found with " + params.length + " params");
-
-                    if (params.length >= 2 && params[0] == String.class && params[1] == String.class) {
-                        Object[] args = new Object[params.length];
-                        args[0] = username;   // sipUser
-                        args[1] = password;   // sipPassword
-
-                        for (int i = 2; i < params.length; i++) {
-                            if (params[i] == String.class) {
-                                // sipCallerIDName (index 2), sipCallerIDNumber (index 3), fcmToken (index 4)
-                                if (i == 2) args[i] = "2ndCall";
-                                else args[i] = null;
-                            } else if (params[i] == boolean.class) {
-                                args[i] = false;
-                            } else if (params[i] == long.class) {
-                                args[i] = 60000L;
-                            } else if (params[i] == int.class) {
-                                // Kotlin's Int? compiled as int in some overloads, or Integer
-                                args[i] = 0;
-                            } else {
-                                args[i] = null;
-                            }
-                        }
-
-                        try {
-                            return ctor.newInstance(args);
-                        } catch (Exception e) {
-                            Log.w(TAG, "Constructor with " + params.length + " params failed: " + e.getMessage());
-                        }
-                    }
-                }
-
-                // Try Kotlin companion object or builder pattern
-                for (Method m : configClass.getMethods()) {
-                    if (m.getName().equals("copy") || m.getName().equals("invoke")) {
-                        Log.d(TAG, "Found method: " + m.getName() + " with " + m.getParameterCount() + " params");
-                    }
-                }
-            } catch (ClassNotFoundException e) {
-                Log.d(TAG, className + " not found, trying next...");
-            }
-        }
-        return null;
     }
 
     @JavascriptInterface
@@ -186,57 +82,23 @@ public class VoIPBridge {
         }
         new Thread(() -> {
             try {
-                // newInvite is directly on TelnyxClient
-                // Signature: newInvite(callerName, callerNumber, destinationNumber, clientState, ...)
-                Method newInvite = null;
-                for (Method m : telnyxClient.getClass().getMethods()) {
-                    if (m.getName().equals("newInvite")) {
-                        newInvite = m;
-                        break;
-                    }
-                }
+                com.telnyx.webrtc.sdk.Call callObj = telnyxClient.newInvite(
+                    "2ndCall",            // callerName
+                    callerNumber,         // callerNumber
+                    destinationNumber,    // destinationNumber
+                    "",                   // clientState
+                    null,                 // customHeaders
+                    false,                // debug
+                    null,                 // preferredCodecs
+                    false,                // useTrickleIce
+                    null,                 // audioConstraints
+                    false                 // mutedMicOnStart
+                );
 
-                if (newInvite == null) {
-                    sendEvent("error", "newInvite method not found");
-                    return;
-                }
-
-                Class<?>[] params = newInvite.getParameterTypes();
-                Object[] args = new Object[params.length];
-                Log.d(TAG, "newInvite has " + params.length + " params");
-
-                // Fill params: callerName, callerNumber, destinationNumber, clientState, ...
-                int strIdx = 0;
-                String[] strValues = {"2ndCall", callerNumber, destinationNumber, ""};
-                for (int i = 0; i < params.length; i++) {
-                    if (params[i] == String.class && strIdx < strValues.length) {
-                        args[i] = strValues[strIdx++];
-                    } else if (params[i] == boolean.class) {
-                        args[i] = false;
-                    } else if (params[i] == java.util.Map.class) {
-                        args[i] = null;
-                    } else if (params[i] == java.util.List.class) {
-                        args[i] = null;
-                    } else {
-                        args[i] = null;
-                    }
-                }
-
-                Object callObj = newInvite.invoke(telnyxClient, args);
-
-                // Extract call ID from returned Call object
                 if (callObj != null) {
-                    try {
-                        Method getCallId = callObj.getClass().getMethod("getCallId");
-                        Object callIdObj = getCallId.invoke(callObj);
-                        if (callIdObj instanceof UUID) {
-                            activeCallId = (UUID) callIdObj;
-                        }
-                    } catch (Exception e) {
-                        Log.w(TAG, "Could not get callId: " + e.getMessage());
-                    }
+                    activeCallId = callObj.getCallId();
+                    Log.d(TAG, "Call initiated, callId: " + activeCallId);
                 }
-
                 sendEvent("calling", destinationNumber);
             } catch (Exception e) {
                 Log.e(TAG, "Call failed: " + e.getMessage(), e);
@@ -254,28 +116,17 @@ public class VoIPBridge {
         }
         new Thread(() -> {
             try {
-                // acceptCall(callId: UUID, destinationNumber: String, ...)
-                Method acceptCall = null;
-                for (Method m : telnyxClient.getClass().getMethods()) {
-                    if (m.getName().equals("acceptCall")) {
-                        acceptCall = m;
-                        break;
-                    }
-                }
-                if (acceptCall != null) {
-                    Class<?>[] params = acceptCall.getParameterTypes();
-                    Object[] args = new Object[params.length];
-                    args[0] = activeCallId;
-                    if (params.length > 1) args[1] = ""; // destinationNumber
-                    for (int i = 2; i < params.length; i++) {
-                        if (params[i] == boolean.class) args[i] = false;
-                        else args[i] = null;
-                    }
-                    acceptCall.invoke(telnyxClient, args);
-                    sendEvent("answered", "");
-                } else {
-                    sendEvent("error", "acceptCall method not found");
-                }
+                telnyxClient.acceptCall(
+                    activeCallId,
+                    "",     // destinationNumber
+                    null,   // customHeaders
+                    false,  // debug
+                    false,  // useTrickleIce
+                    null,   // audioConstraints
+                    false,  // mutedMicOnStart
+                    null    // answeredDeviceToken
+                );
+                sendEvent("answered", "");
             } catch (Exception e) {
                 Log.e(TAG, "Answer failed: " + e.getMessage(), e);
                 sendEvent("error", "Answer failed: " + e.getMessage());
@@ -288,17 +139,7 @@ public class VoIPBridge {
         Log.d(TAG, "Hangup");
         if (telnyxClient != null && activeCallId != null) {
             try {
-                // endCall(callId: UUID)
-                Method endCall = null;
-                for (Method m : telnyxClient.getClass().getMethods()) {
-                    if (m.getName().equals("endCall") && m.getParameterCount() == 1) {
-                        endCall = m;
-                        break;
-                    }
-                }
-                if (endCall != null) {
-                    endCall.invoke(telnyxClient, activeCallId);
-                }
+                telnyxClient.endCall(activeCallId);
             } catch (Exception e) {
                 Log.e(TAG, "Hangup error: " + e.getMessage());
             }
@@ -310,22 +151,12 @@ public class VoIPBridge {
     @JavascriptInterface
     public void mute() {
         isMuted = !isMuted;
-        // Mute is on the Call object, not TelnyxClient
         if (telnyxClient != null && activeCallId != null) {
             try {
-                // Get active calls map and find ours
-                Method getActiveCalls = telnyxClient.getClass().getMethod("getActiveCalls");
-                Object callsMap = getActiveCalls.invoke(telnyxClient);
-                if (callsMap instanceof java.util.Map) {
-                    Object callObj = ((java.util.Map<?, ?>) callsMap).get(activeCallId);
-                    if (callObj != null) {
-                        for (Method m : callObj.getClass().getMethods()) {
-                            if (m.getName().equals("onMuteUnmutePressed") && m.getParameterCount() == 0) {
-                                m.invoke(callObj);
-                                break;
-                            }
-                        }
-                    }
+                Map<UUID, com.telnyx.webrtc.sdk.Call> calls = telnyxClient.getActiveCalls();
+                com.telnyx.webrtc.sdk.Call callObj = calls.get(activeCallId);
+                if (callObj != null) {
+                    callObj.onMuteUnmutePressed();
                 }
             } catch (Exception e) {
                 Log.e(TAG, "Mute error: " + e.getMessage());
@@ -339,8 +170,24 @@ public class VoIPBridge {
         AudioManager audioManager = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
         if (audioManager != null) {
             audioManager.setSpeakerphoneOn(on);
-            sendEvent("speaker", String.valueOf(on));
         }
+        // Also try SDK's audio device control
+        if (telnyxClient != null) {
+            try {
+                if (on) {
+                    telnyxClient.setAudioOutputDevice(
+                        com.telnyx.webrtc.sdk.model.AudioDevice.LOUDSPEAKER
+                    );
+                } else {
+                    telnyxClient.setAudioOutputDevice(
+                        com.telnyx.webrtc.sdk.model.AudioDevice.PHONE_EARPIECE
+                    );
+                }
+            } catch (Exception e) {
+                Log.w(TAG, "SDK speaker toggle: " + e.getMessage());
+            }
+        }
+        sendEvent("speaker", String.valueOf(on));
     }
 
     @JavascriptInterface
@@ -354,35 +201,109 @@ public class VoIPBridge {
     }
 
     /**
-     * Watch for SDK readiness. Polls until the client reports ready or timeout.
+     * Build CredentialConfig — tries direct construction first, then reflection fallback
      */
+    private Object buildCredentialConfig(String username, String password) {
+        // Attempt 1: Direct constructor with all 15 params
+        try {
+            return new com.telnyx.webrtc.sdk.CredentialConfig(
+                username,       // sipUser
+                password,       // sipPassword
+                "2ndCall",      // sipCallerIDName
+                null,           // sipCallerIDNumber
+                null,           // fcmToken
+                null,           // ringtone
+                null,           // ringBackTone (Integer? in Kotlin)
+                com.telnyx.webrtc.sdk.model.LogLevel.DEBUG,
+                null,           // customLogger
+                true,           // autoReconnect
+                false,          // debug
+                60000L,         // reconnectionTimeout
+                com.telnyx.webrtc.sdk.model.Region.US_EAST,
+                true,           // fallbackOnRegionFailure
+                false           // forceRelayCandidate
+            );
+        } catch (Exception e) {
+            Log.w(TAG, "Direct CredentialConfig failed: " + e.getMessage());
+        }
+
+        // Attempt 2: Reflection — find any constructor that starts with (String, String, ...)
+        try {
+            Class<?> configClass = Class.forName("com.telnyx.webrtc.sdk.CredentialConfig");
+            for (java.lang.reflect.Constructor<?> ctor : configClass.getConstructors()) {
+                Class<?>[] params = ctor.getParameterTypes();
+                Log.d(TAG, "Found CredentialConfig constructor with " + params.length + " params: " + java.util.Arrays.toString(params));
+
+                if (params.length >= 2 && params[0] == String.class && params[1] == String.class) {
+                    Object[] args = new Object[params.length];
+                    args[0] = username;
+                    args[1] = password;
+                    for (int i = 2; i < params.length; i++) {
+                        if (params[i] == String.class) {
+                            args[i] = (i == 2) ? "2ndCall" : null;
+                        } else if (params[i] == boolean.class) {
+                            args[i] = (i <= 10) ? true : false; // autoReconnect=true
+                        } else if (params[i] == long.class) {
+                            args[i] = 60000L;
+                        } else if (params[i] == int.class) {
+                            // This might be the Kotlin default mask — try 0 or bitmask
+                            args[i] = 0;
+                        } else if (params[i].getName().contains("DefaultConstructorMarker")) {
+                            args[i] = null;
+                        } else {
+                            // Try to find enum values for LogLevel, Region
+                            try {
+                                if (params[i].isEnum()) {
+                                    Object[] enumConstants = params[i].getEnumConstants();
+                                    if (enumConstants != null && enumConstants.length > 0) {
+                                        args[i] = enumConstants[0]; // First enum value
+                                    }
+                                }
+                            } catch (Exception ignored) {}
+                            if (args[i] == null && params[i].isPrimitive()) {
+                                if (params[i] == int.class) args[i] = 0;
+                                else if (params[i] == long.class) args[i] = 0L;
+                                else if (params[i] == boolean.class) args[i] = false;
+                            }
+                        }
+                    }
+                    try {
+                        Object result = ctor.newInstance(args);
+                        Log.d(TAG, "CredentialConfig created via reflection (" + params.length + " params)");
+                        return result;
+                    } catch (Exception e2) {
+                        Log.w(TAG, "Constructor " + params.length + " params failed: " + e2.getMessage());
+                    }
+                }
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Reflection CredentialConfig failed: " + e.getMessage());
+        }
+
+        return null;
+    }
+
     private void startReadyWatcher() {
         new Thread(() -> {
-            for (int i = 0; i < 20; i++) { // 20 x 500ms = 10s max wait
+            for (int i = 0; i < 30; i++) {
                 try { Thread.sleep(500); } catch (InterruptedException ignored) { return; }
                 if (telnyxClient == null) return;
+                // Check if we have active connection by trying getActiveCalls
                 try {
-                    // Check if client has any gateway method indicating ready state
-                    Method isConnected = null;
-                    for (Method m : telnyxClient.getClass().getMethods()) {
-                        if (m.getName().equals("isConnected") && m.getParameterCount() == 0) {
-                            isConnected = m;
-                            break;
-                        }
+                    telnyxClient.getActiveCalls();
+                    // If no exception, SDK is connected
+                    if (!isLoggedIn) {
+                        isLoggedIn = true;
+                        sendEvent("ready", "connected");
+                        Log.d(TAG, "SDK ready");
+                        return;
                     }
-                    if (isConnected != null) {
-                        Object result = isConnected.invoke(telnyxClient);
-                        if (Boolean.TRUE.equals(result)) {
-                            isLoggedIn = true;
-                            sendEvent("ready", "connected");
-                            Log.d(TAG, "SDK ready (isConnected=true)");
-                            return;
-                        }
-                    }
-                } catch (Exception ignored) {}
+                } catch (Exception e) {
+                    // Not ready yet
+                }
             }
-            // Timeout — assume ready if we got this far without error
-            if (!isLoggedIn) {
+            // Timeout — assume ready
+            if (!isLoggedIn && telnyxClient != null) {
                 isLoggedIn = true;
                 sendEvent("ready", "connected");
                 Log.w(TAG, "SDK ready (timeout fallback)");
@@ -390,58 +311,44 @@ public class VoIPBridge {
         }).start();
     }
 
-    /**
-     * Observe call state changes via TelnyxClient's socketResponseFlow.
-     * Since we can't easily use Kotlin Flows from Java, we poll getActiveCalls() instead.
-     */
     private void startCallStateObserver() {
         new Thread(() -> {
             String lastState = "";
-            while (isLoggedIn && telnyxClient != null) {
+            while (observerRunning && telnyxClient != null) {
                 try {
                     Thread.sleep(1000);
-                    Method getActiveCalls = telnyxClient.getClass().getMethod("getActiveCalls");
-                    Object callsMap = getActiveCalls.invoke(telnyxClient);
-                    if (callsMap instanceof java.util.Map) {
-                        java.util.Map<?, ?> calls = (java.util.Map<?, ?>) callsMap;
-                        if (!calls.isEmpty()) {
-                            Object callObj = calls.values().iterator().next();
-                            // Get call ID
-                            try {
-                                Method getCallId = callObj.getClass().getMethod("getCallId");
-                                Object cid = getCallId.invoke(callObj);
-                                if (cid instanceof UUID) activeCallId = (UUID) cid;
-                            } catch (Exception ignored) {}
+                    Map<UUID, com.telnyx.webrtc.sdk.Call> calls = telnyxClient.getActiveCalls();
 
-                            // Get call state
-                            try {
-                                Method getState = callObj.getClass().getMethod("getCallState");
-                                Object state = getState.invoke(callObj);
-                                String stateStr = state != null ? state.toString().toLowerCase() : "";
-                                if (!stateStr.equals(lastState)) {
-                                    lastState = stateStr;
-                                    Log.d(TAG, "Call state: " + stateStr);
-                                    if (stateStr.contains("active") || stateStr.contains("answer")) {
-                                        sendEvent("active", "");
-                                    } else if (stateStr.contains("ring")) {
-                                        sendEvent("ringing", "");
-                                    } else if (stateStr.contains("done") || stateStr.contains("hangup") || stateStr.contains("bye")) {
-                                        sendEvent("hangup", "");
-                                        activeCallId = null;
-                                        break;
-                                    }
-                                }
-                            } catch (Exception ignored) {}
-                        } else if (activeCallId != null) {
-                            // Call was active but now gone — hung up
-                            sendEvent("hangup", "");
-                            activeCallId = null;
-                            lastState = "";
+                    if (calls != null && !calls.isEmpty()) {
+                        com.telnyx.webrtc.sdk.Call callObj = calls.values().iterator().next();
+                        activeCallId = callObj.getCallId();
+
+                        String stateStr = "";
+                        try {
+                            Object state = callObj.getCallState();
+                            stateStr = state != null ? state.toString().toLowerCase() : "";
+                        } catch (Exception ignored) {}
+
+                        if (!stateStr.isEmpty() && !stateStr.equals(lastState)) {
+                            lastState = stateStr;
+                            Log.d(TAG, "Call state: " + stateStr);
+                            if (stateStr.contains("active")) {
+                                sendEvent("active", "");
+                            } else if (stateStr.contains("ringing") || stateStr.contains("connecting")) {
+                                sendEvent("ringing", "");
+                            } else if (stateStr.contains("done") || stateStr.contains("error")) {
+                                sendEvent("hangup", "");
+                                activeCallId = null;
+                                lastState = "";
+                            }
                         }
+                    } else if (activeCallId != null) {
+                        sendEvent("hangup", "");
+                        activeCallId = null;
+                        lastState = "";
                     }
                 } catch (Exception e) {
-                    Log.w(TAG, "State observer error: " + e.getMessage());
-                    break;
+                    // Silently continue
                 }
             }
         }).start();
@@ -457,11 +364,11 @@ public class VoIPBridge {
     }
 
     public void destroy() {
+        observerRunning = false;
         isLoggedIn = false;
         if (telnyxClient != null) {
             try {
-                Method onDestroy = telnyxClient.getClass().getMethod("onDestroy");
-                onDestroy.invoke(telnyxClient);
+                telnyxClient.onDestroy();
             } catch (Exception e) {
                 Log.e(TAG, "Destroy error: " + e.getMessage());
             }
