@@ -193,7 +193,17 @@ public class VoIPBridge {
                     for (int i = 0; i < 15; i++) {
                         Thread.sleep(1000);
                         try {
-                            Object state = callObj.getCallState();
+                            // getCallState() returns LiveData<CallState> — need getValue()
+                            Object liveData = callObj.getCallState();
+                            Object state = null;
+                            if (liveData != null) {
+                                try {
+                                    java.lang.reflect.Method getValue = liveData.getClass().getMethod("getValue");
+                                    state = getValue.invoke(liveData);
+                                } catch (Exception e) {
+                                    state = liveData; // fallback
+                                }
+                            }
                             String stateStr = state != null ? state.toString() : "null";
                             Log.d(TAG, "Call state [" + i + "s]: " + stateStr);
                             sendEvent("state", stateStr.toLowerCase());
@@ -472,7 +482,14 @@ public class VoIPBridge {
 
                         String stateStr = "";
                         try {
-                            Object state = callObj.getCallState();
+                            Object liveData = callObj.getCallState();
+                            Object state = null;
+                            if (liveData != null) {
+                                try {
+                                    java.lang.reflect.Method gv = liveData.getClass().getMethod("getValue");
+                                    state = gv.invoke(liveData);
+                                } catch (Exception ignored2) { state = liveData; }
+                            }
                             stateStr = state != null ? state.toString().toLowerCase() : "";
                         } catch (Exception ignored) {}
 
