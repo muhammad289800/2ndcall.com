@@ -46,22 +46,87 @@ public class VoIPBridge {
 
                 // 3. Connect and login
                 com.telnyx.webrtc.sdk.CredentialConfig credConfig = (com.telnyx.webrtc.sdk.CredentialConfig) config;
-                try {
-                    // Try connect() with config params
-                    telnyxClient.credentialLogin(credConfig);
-                } catch (Exception connectErr) {
-                    Log.w(TAG, "credentialLogin failed, trying connect: " + connectErr.getMessage());
-                    // Fallback: some SDK versions need connect() first
+
+                // Log all available connect methods for debugging
+                for (java.lang.reflect.Method m : telnyxClient.getClass().getMethods()) {
+                    if (m.getName().equals("connect") || m.getName().equals("credentialLogin")) {
+                        Class<?>[] pts = m.getParameterTypes();
+                        StringBuilder sb = new StringBuilder(m.getName() + "(");
+                        for (int i = 0; i < pts.length; i++) {
+                            if (i > 0) sb.append(", ");
+                            sb.append(pts[i].getSimpleName());
+                        }
+                        sb.append(")");
+                        Log.d(TAG, "SDK method: " + sb);
+                    }
+                }
+
+                // Strategy 1: Try connect(CredentialConfig) directly
+                boolean connected = false;
+                for (java.lang.reflect.Method m : telnyxClient.getClass().getMethods()) {
+                    if (m.getName().equals("connect")) {
+                        Class<?>[] pts = m.getParameterTypes();
+                        // Look for connect(CredentialConfig) or connect(..., CredentialConfig, ...)
+                        for (int i = 0; i < pts.length; i++) {
+                            if (pts[i].isAssignableFrom(credConfig.getClass())) {
+                                Object[] args = new Object[pts.length];
+                                for (int j = 0; j < pts.length; j++) {
+                                    if (pts[j].isAssignableFrom(credConfig.getClass())) {
+                                        args[j] = credConfig;
+                                    } else if (pts[j] == boolean.class) {
+                                        args[j] = true;
+                                    } else if (pts[j] == String.class) {
+                                        args[j] = null;
+                                    } else {
+                                        // Try default constructor for other types
+                                        try { args[j] = pts[j].getConstructor().newInstance(); }
+                                        catch (Exception ignored) { args[j] = null; }
+                                    }
+                                }
+                                try {
+                                    m.invoke(telnyxClient, args);
+                                    connected = true;
+                                    Log.d(TAG, "Connected via connect() with " + pts.length + " params");
+                                } catch (Exception ce) {
+                                    Log.w(TAG, "connect() variant failed: " + ce.getMessage());
+                                }
+                                break;
+                            }
+                        }
+                        if (connected) break;
+                    }
+                }
+
+                // Strategy 2: connect() no-args then credentialLogin
+                if (!connected) {
                     try {
                         java.lang.reflect.Method connectMethod = telnyxClient.getClass().getMethod("connect");
                         connectMethod.invoke(telnyxClient);
-                        Thread.sleep(2000);
+                        Log.d(TAG, "connect() no-args succeeded, waiting...");
+                        Thread.sleep(3000);
                         telnyxClient.credentialLogin(credConfig);
+                        connected = true;
+                    } catch (NoSuchMethodException nsm) {
+                        Log.w(TAG, "No zero-arg connect()");
                     } catch (Exception e2) {
-                        Log.e(TAG, "All connect attempts failed: " + e2.getMessage());
-                        sendEvent("error", "Connect failed: " + e2.getMessage());
-                        return;
+                        Log.w(TAG, "connect()+credentialLogin failed: " + e2.getMessage());
                     }
+                }
+
+                // Strategy 3: credentialLogin directly
+                if (!connected) {
+                    try {
+                        telnyxClient.credentialLogin(credConfig);
+                        connected = true;
+                        Log.d(TAG, "credentialLogin() direct succeeded");
+                    } catch (Exception e3) {
+                        Log.e(TAG, "credentialLogin direct failed: " + e3.getMessage());
+                    }
+                }
+
+                if (!connected) {
+                    sendEvent("error", "All connect strategies failed");
+                    return;
                 }
 
                 Log.d(TAG, "Connect called, starting observers...");
