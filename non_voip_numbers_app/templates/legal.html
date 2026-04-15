@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{{ title }} — 2ndCall</title>
+  <meta name="description" content="{{ title }} for 2ndCall, the A2P 10DLC SMS and programmable voice platform operated by MBNECOM LLC." />
+  <meta name="robots" content="index, follow" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0a0e14; --surface: #12171f;
+      --text: #eaf0f8; --muted: #9aa5b4;
+      --accent: #4f8fff; --accent-h: #6ea3ff;
+      --border: rgba(255,255,255,.08);
+    }
+    body { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, sans-serif;
+           background: var(--bg); color: var(--text); line-height: 1.65; font-size: 16px; }
+    a { color: var(--accent-h); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .nav { display:flex; justify-content:space-between; align-items:center; padding: 18px 28px;
+           border-bottom: 1px solid var(--border); max-width: 1100px; margin: 0 auto; }
+    .nav-logo { font-size: 22px; font-weight: 900; color: var(--accent); letter-spacing: -.5px; }
+    .nav-logo span { color: var(--accent-h); }
+    main { max-width: 820px; margin: 0 auto; padding: 48px 28px 80px; }
+    h1 { font-size: 38px; font-weight: 800; letter-spacing: -1px; margin-bottom: 8px; }
+    .meta { color: var(--muted); font-size: 14px; margin-bottom: 28px; }
+    h2 { font-size: 22px; font-weight: 700; margin-top: 32px; margin-bottom: 10px; color: var(--accent-h); }
+    h3 { font-size: 17px; font-weight: 700; margin-top: 22px; margin-bottom: 6px; }
+    p, li { color: var(--text); opacity: .92; }
+    p { margin-bottom: 12px; }
+    ul, ol { padding-left: 24px; margin-bottom: 12px; }
+    li { margin-bottom: 6px; }
+    code { background: var(--surface); padding: 2px 6px; border-radius: 4px; font-size: 13px; }
+    .callout { background: var(--surface); border-left: 3px solid var(--accent); padding: 14px 18px;
+               margin: 18px 0; border-radius: 6px; font-size: 15px; }
+    footer { border-top: 1px solid var(--border); padding: 28px; text-align: center;
+             color: var(--muted); font-size: 13px; max-width: 1100px; margin: 0 auto; }
+    footer a { color: var(--muted); margin: 0 10px; }
+  </style>
+</head>
+<body>
+  <nav class="nav">
+    <a href="/" class="nav-logo">2nd<span>Call</span></a>
+    <div><a href="/app">Sign In</a></div>
+  </nav>
+  <main>
+    <h1>{{ title }}</h1>
+    <p class="meta">Effective {{ effective_date }} &middot; Operator: MBNECOM LLC &middot; Contact: <a href="mailto:{{ contact_email }}">{{ contact_email }}</a></p>
+    {{ body | safe }}
+  </main>
+  <footer>
+    &copy; 2026 MBNECOM LLC &middot;
+    <a href="/">Home</a>
+    <a href="/privacy">Privacy</a>
+    <a href="/terms">Terms</a>
+    <a href="/sms-policy">SMS Policy</a>
+    <a href="/acceptable-use">Acceptable Use</a>
+    <a href="/dpa">Data Processing</a>
+  </footer>
+</body>
+</html>

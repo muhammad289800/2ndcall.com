@@ -3,3 +3,4 @@ flask-cors>=4.0
 gunicorn>=21.2
 requests>=2.31
 stripe>=8.0
+pynacl>=1.5

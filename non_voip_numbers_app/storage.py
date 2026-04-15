@@ -166,6 +166,32 @@ class Storage:
             self._ensure_column(conn, "wallet_transactions", "user_id", "INTEGER DEFAULT NULL")
             # Per-user number isolation
             self._ensure_column(conn, "managed_numbers", "user_id", "INTEGER DEFAULT NULL")
+            # A2P 10DLC compliance — business profile per user (required to send SMS)
+            self._ensure_column(conn, "users", "business_name", "TEXT DEFAULT ''")
+            self._ensure_column(conn, "users", "business_website", "TEXT DEFAULT ''")
+            self._ensure_column(conn, "users", "business_ein", "TEXT DEFAULT ''")
+            self._ensure_column(conn, "users", "business_country", "TEXT DEFAULT ''")
+            self._ensure_column(conn, "users", "use_case", "TEXT DEFAULT ''")
+            self._ensure_column(conn, "users", "brand_status", "TEXT DEFAULT 'unregistered'")
+            self._ensure_column(conn, "users", "campaign_status", "TEXT DEFAULT 'unregistered'")
+            self._ensure_column(conn, "users", "accepted_terms_at", "INTEGER DEFAULT 0")
+            self._ensure_column(conn, "users", "accepted_sms_policy_at", "INTEGER DEFAULT 0")
+            self._ensure_column(conn, "users", "signup_ip", "TEXT DEFAULT ''")
+            self._ensure_column(conn, "users", "signup_user_agent", "TEXT DEFAULT ''")
+            # SMS consent ledger — tracks STOP/START/HELP per recipient number
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS sms_consent (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    sender_number TEXT NOT NULL,
+                    recipient_number TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    source TEXT DEFAULT 'keyword',
+                    created_at TEXT NOT NULL,
+                    UNIQUE(sender_number, recipient_number)
+                )
+                """
+            )
 
     # Allowed identifiers for _ensure_column — prevents SQL injection via dynamic DDL
     _ALLOWED_TABLES = frozenset({
@@ -175,6 +201,10 @@ class Storage:
     _ALLOWED_COLUMNS = frozenset({
         "direction", "event_type", "avatar_color", "last_seen",
         "user_id", "metadata_json",
+        "business_name", "business_website", "business_ein", "business_country",
+        "use_case", "brand_status", "campaign_status",
+        "accepted_terms_at", "accepted_sms_policy_at",
+        "signup_ip", "signup_user_agent",
     })
 
     def _ensure_column(
@@ -678,6 +708,95 @@ class Storage:
         with self._connect() as conn:
             row = conn.execute("SELECT COUNT(*) AS cnt FROM users").fetchone()
         return int(row["cnt"] or 0)
+
+    # ── Business profile (A2P 10DLC compliance) ────────────────────────────
+
+    def set_user_business_profile(
+        self,
+        user_id: int,
+        *,
+        business_name: str = "",
+        business_website: str = "",
+        business_ein: str = "",
+        business_country: str = "",
+        use_case: str = "",
+        accepted_terms_at: int = 0,
+        accepted_sms_policy_at: int = 0,
+        signup_ip: str = "",
+        signup_user_agent: str = "",
+    ) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                """
+                UPDATE users SET
+                    business_name=COALESCE(NULLIF(?, ''), business_name),
+                    business_website=COALESCE(NULLIF(?, ''), business_website),
+                    business_ein=COALESCE(NULLIF(?, ''), business_ein),
+                    business_country=COALESCE(NULLIF(?, ''), business_country),
+                    use_case=COALESCE(NULLIF(?, ''), use_case),
+                    accepted_terms_at=CASE WHEN ?>0 THEN ? ELSE accepted_terms_at END,
+                    accepted_sms_policy_at=CASE WHEN ?>0 THEN ? ELSE accepted_sms_policy_at END,
+                    signup_ip=COALESCE(NULLIF(?, ''), signup_ip),
+                    signup_user_agent=COALESCE(NULLIF(?, ''), signup_user_agent)
+                WHERE id=?
+                """,
+                (
+                    business_name, business_website, business_ein, business_country, use_case,
+                    accepted_terms_at, accepted_terms_at,
+                    accepted_sms_policy_at, accepted_sms_policy_at,
+                    signup_ip, signup_user_agent,
+                    user_id,
+                ),
+            )
+
+    def get_user_business_profile(self, user_id: int) -> dict[str, Any] | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                """
+                SELECT business_name, business_website, business_ein, business_country,
+                       use_case, brand_status, campaign_status,
+                       accepted_terms_at, accepted_sms_policy_at
+                FROM users WHERE id=?
+                """,
+                (user_id,),
+            ).fetchone()
+        return dict(row) if row else None
+
+    # ── SMS consent ledger ─────────────────────────────────────────────────
+
+    def _normalize_number(self, number: str) -> str:
+        return "".join(c for c in str(number or "") if c.isdigit() or c == "+").strip()
+
+    def set_sms_consent(self, sender_number: str, recipient_number: str, status: str, source: str = "keyword") -> None:
+        sender = self._normalize_number(sender_number)
+        recipient = self._normalize_number(recipient_number)
+        if not sender or not recipient:
+            return
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO sms_consent (sender_number, recipient_number, status, source, created_at)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(sender_number, recipient_number)
+                DO UPDATE SET status=excluded.status, source=excluded.source, created_at=excluded.created_at
+                """,
+                (sender, recipient, status, source, utc_now()),
+            )
+
+    def get_sms_consent(self, sender_number: str, recipient_number: str) -> str | None:
+        sender = self._normalize_number(sender_number)
+        recipient = self._normalize_number(recipient_number)
+        if not sender or not recipient:
+            return None
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT status FROM sms_consent WHERE sender_number=? AND recipient_number=?",
+                (sender, recipient),
+            ).fetchone()
+        return row["status"] if row else None
+
+    def is_sms_opted_out(self, sender_number: str, recipient_number: str) -> bool:
+        return self.get_sms_consent(sender_number, recipient_number) == "opted_out"
 
     # ── Payment Orders ────────────────────────────────────────────────────
 

@@ -24,6 +24,7 @@ from .payments import (
 )
 from .providers import ProviderError, build_providers
 from .storage import Storage
+from .legal import PAGES as LEGAL_PAGES, EFFECTIVE_DATE as LEGAL_EFFECTIVE_DATE, CONTACT_EMAIL as LEGAL_CONTACT_EMAIL
 
 
 def parse_bool(value: Any, default: bool = False) -> bool:
@@ -51,7 +52,13 @@ def create_app() -> Flask:
     app = Flask(__name__)
     app.json.sort_keys = False
     _secret = os.environ.get("SECRET_KEY", "").strip()
+    _is_prod = bool(os.environ.get("RAILWAY_ENVIRONMENT")) or os.environ.get("FLASK_ENV") == "production"
     if not _secret:
+        if _is_prod:
+            raise RuntimeError(
+                "SECRET_KEY environment variable is required in production. "
+                "Sessions cannot be persisted without it."
+            )
         import warnings
         warnings.warn(
             "SECRET_KEY is not set! Sessions will be lost on every restart. "
@@ -64,22 +71,56 @@ def create_app() -> Flask:
     app.config["SESSION_COOKIE_SAMESITE"] = "None" if os.environ.get("RAILWAY_ENVIRONMENT") else "Lax"
     app.config["SESSION_COOKIE_SECURE"] = os.environ.get("FLASK_ENV") == "production" or os.environ.get("RAILWAY_ENVIRONMENT") is not None
 
-    # CORS for mobile app (Capacitor webview origins)
+    # CORS for mobile app (Capacitor webview origins) + production web domain
+    _cors_extra = [o.strip() for o in os.environ.get("CORS_EXTRA_ORIGINS", "").split(",") if o.strip()]
     CORS(app, supports_credentials=True, origins=[
         "capacitor://localhost",
         "https://localhost",
         "http://localhost",
         "http://localhost:*",
         "https://2ndcallcom-production-dcdb.up.railway.app",
+        "https://2ndcall.com",
+        "https://www.2ndcall.com",
+        *_cors_extra,
     ])
 
-    # Prevent caching of HTML pages so updates are always served fresh
+    # Prevent caching of HTML pages so updates are always served fresh,
+    # and apply baseline OWASP security headers on every response.
     @app.after_request
-    def add_no_cache_headers(response):
-        if 'text/html' in response.content_type:
+    def add_response_headers(response):
+        ct = response.content_type or ""
+        if 'text/html' in ct:
             response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
             response.headers['Pragma'] = 'no-cache'
             response.headers['Expires'] = '0'
+        # Security headers (safe defaults for an app + API surface)
+        response.headers.setdefault('X-Content-Type-Options', 'nosniff')
+        response.headers.setdefault('X-Frame-Options', 'DENY')
+        response.headers.setdefault('Referrer-Policy', 'strict-origin-when-cross-origin')
+        response.headers.setdefault(
+            'Permissions-Policy',
+            'camera=(), microphone=(self), geolocation=(), payment=(self), usb=()'
+        )
+        if _is_prod:
+            response.headers.setdefault(
+                'Strict-Transport-Security',
+                'max-age=31536000; includeSubDomains'
+            )
+        # CSP: allow inline scripts/styles (the monolithic templates rely on them)
+        # plus the providers the app actually calls from the browser.
+        response.headers.setdefault(
+            'Content-Security-Policy',
+            "default-src 'self'; "
+            "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://js.stripe.com https://cdn.jsdelivr.net; "
+            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net; "
+            "font-src 'self' https://fonts.gstatic.com data:; "
+            "img-src 'self' data: https:; "
+            "connect-src 'self' https://api.stripe.com https://api.telnyx.com https://*.signalwire.com wss:; "
+            "frame-src https://js.stripe.com https://hooks.stripe.com; "
+            "base-uri 'self'; "
+            "form-action 'self'; "
+            "frame-ancestors 'none'"
+        )
         return response
 
     storage = Storage()
@@ -273,15 +314,49 @@ def create_app() -> Flask:
         email = str(body.get("email", "")).strip().lower()
         name = str(body.get("name", "")).strip()
         password = str(body.get("password", "")).strip()
+        # A2P-compliance business fields (optional at signup; required before sending SMS)
+        business_name = str(body.get("business_name", "")).strip()
+        business_website = str(body.get("business_website", "")).strip()
+        business_ein = str(body.get("business_ein", "")).strip()
+        business_country = str(body.get("business_country", "")).strip()
+        use_case = str(body.get("use_case", "")).strip()
+        accept_terms = parse_bool(body.get("accept_terms"))
+        accept_sms_policy = parse_bool(body.get("accept_sms_policy"))
         if not email or not password:
             return jsonify({"error": "email and password are required."}), 400
-        if len(password) < 6:
-            return jsonify({"error": "Password must be at least 6 characters."}), 400
+        # Basic email shape check (RFC-ish, not perfect but catches typos)
+        if "@" not in email or "." not in email.split("@", 1)[-1] or len(email) > 254:
+            return jsonify({"error": "Please enter a valid email address."}), 400
+        if len(password) < 8:
+            return jsonify({"error": "Password must be at least 8 characters."}), 400
+        if not accept_terms or not accept_sms_policy:
+            return jsonify({
+                "error": "You must accept the Terms of Service and SMS Policy to register."
+            }), 400
         if storage.get_user_by_email(email):
             return jsonify({"error": "An account with this email already exists."}), 409
-        # First user gets admin role automatically
-        role = "admin" if storage.user_count() == 0 else "user"
+        # SECURITY: Never auto-escalate to admin based on registration order.
+        # Admins are promoted explicitly via ADMIN_TOKEN or the admin CLI.
+        role = "user"
         user = storage.create_user(email, name or email.split("@")[0], password, role)
+        # Persist business metadata (best-effort; storage may ignore unknown fields)
+        try:
+            storage.set_user_business_profile(
+                user["id"],
+                business_name=business_name,
+                business_website=business_website,
+                business_ein=business_ein,
+                business_country=business_country,
+                use_case=use_case,
+                accepted_terms_at=int(time.time()),
+                accepted_sms_policy_at=int(time.time()),
+                signup_ip=request.remote_addr or "",
+                signup_user_agent=request.headers.get("User-Agent", "")[:500],
+            )
+        except AttributeError:
+            # Older storage layer — log and keep going. Business profile can be
+            # collected later via the verification flow.
+            app.logger.info("Storage.set_user_business_profile not implemented; skipping.")
         session["user_id"] = user["id"]
         session.permanent = True
         return jsonify({"ok": True, "user": user}), 201
@@ -395,6 +470,43 @@ def create_app() -> Flask:
             )
         # Otherwise show the landing page
         return render_template("landing.html")
+
+    # ── Public legal pages (required for A2P ISV / reseller review) ────────
+    def _render_legal(slug: str):
+        entry = LEGAL_PAGES.get(slug)
+        if not entry:
+            return jsonify({"error": "Not found."}), 404
+        title, body_html = entry
+        return render_template(
+            "legal.html",
+            title=title,
+            body=body_html,
+            effective_date=LEGAL_EFFECTIVE_DATE,
+            contact_email=LEGAL_CONTACT_EMAIL,
+        )
+
+    @app.get("/privacy")
+    def privacy_page():
+        return _render_legal("privacy")
+
+    @app.get("/terms")
+    @app.get("/tos")
+    def terms_page():
+        return _render_legal("terms")
+
+    @app.get("/sms-policy")
+    @app.get("/sms")
+    def sms_policy_page():
+        return _render_legal("sms-policy")
+
+    @app.get("/acceptable-use")
+    @app.get("/aup")
+    def aup_page():
+        return _render_legal("acceptable-use")
+
+    @app.get("/dpa")
+    def dpa_page():
+        return _render_legal("dpa")
 
     @app.get("/app")
     def app_dashboard():
@@ -1067,6 +1179,15 @@ def create_app() -> Flask:
         message = str(body.get("message", "")).strip()
         if not from_number or not to_number or not message:
             return jsonify({"error": "provider, from_number, to_number, and message are required."}), 400
+        # A2P compliance — block if recipient has opted out via STOP.
+        if storage.is_sms_opted_out(from_number, to_number):
+            return jsonify({
+                "error": (
+                    "Recipient has opted out of messages from this number (STOP). "
+                    "They must reply START to re-subscribe before you can send again."
+                ),
+                "code": "opted_out",
+            }), 403
         try:
             provider = provider_or_400(provider_id)
             estimated_cost = estimate_action_cost(provider_id, "sms")
@@ -1257,20 +1378,137 @@ def create_app() -> Flask:
         return hmac.compare_digest(expected, signature)
 
     def _verify_telnyx_webhook() -> bool:
-        """Basic Telnyx webhook verification — checks timestamp freshness."""
+        """Telnyx webhook verification — Ed25519 signature + timestamp freshness.
+
+        Requires TELNYX_PUBLIC_KEY env var (base64-encoded, from Telnyx portal).
+        Falls back to timestamp-only check if key is absent AND we're not in
+        production — this lets local dev work but never silently skips in prod.
+        """
         ts = request.headers.get("telnyx-timestamp", "")
+        sig = request.headers.get("telnyx-signature-ed25519", "")
+        public_key_b64 = os.environ.get("TELNYX_PUBLIC_KEY", "").strip()
+
         if not ts:
-            return True  # No timestamp header — allow (older Telnyx configs)
+            if _is_prod:
+                app.logger.warning("Telnyx webhook missing telnyx-timestamp")
+                return False
+            return True
+
         try:
             webhook_time = int(ts)
             now = int(time.time())
-            # Reject events older than 5 minutes (replay protection)
             if abs(now - webhook_time) > 300:
                 app.logger.warning("Telnyx webhook timestamp too old: %s", ts)
                 return False
         except (ValueError, TypeError):
-            pass
-        return True
+            app.logger.warning("Telnyx webhook has non-numeric timestamp: %s", ts)
+            return False
+
+        if not public_key_b64:
+            if _is_prod:
+                app.logger.error("TELNYX_PUBLIC_KEY not set — rejecting webhook in production")
+                return False
+            return True  # dev only
+
+        if not sig:
+            app.logger.warning("Telnyx webhook missing telnyx-signature-ed25519")
+            return False
+
+        try:
+            import base64
+            from nacl.signing import VerifyKey
+            from nacl.exceptions import BadSignatureError
+            verify_key = VerifyKey(base64.b64decode(public_key_b64))
+            raw_body = request.get_data() or b""
+            signed_payload = f"{ts}|".encode("utf-8") + raw_body
+            verify_key.verify(signed_payload, base64.b64decode(sig))
+            return True
+        except BadSignatureError:
+            app.logger.warning("Telnyx webhook signature did not verify")
+            return False
+        except ImportError:
+            app.logger.error("PyNaCl not installed — cannot verify Telnyx signatures")
+            return not _is_prod
+        except Exception as exc:
+            app.logger.warning("Telnyx webhook verify failed: %s", exc)
+            return False
+
+    # ── A2P opt-in/out keyword handling ────────────────────────────────────
+    _OPT_OUT_KEYWORDS = {"STOP", "STOPALL", "UNSUBSCRIBE", "CANCEL", "END", "QUIT", "REVOKE", "OPTOUT"}
+    _OPT_IN_KEYWORDS = {"START", "YES", "UNSTOP", "OPTIN"}
+    _HELP_KEYWORDS = {"HELP", "INFO"}
+    _SUPPORT_CONTACT = os.environ.get("SUPPORT_CONTACT", "support@2ndcall.com")
+    _BRAND_NAME = os.environ.get("BRAND_NAME", "2ndCall")
+
+    def _classify_sms_keyword(body: str) -> str | None:
+        token = (body or "").strip().upper().split()
+        if not token:
+            return None
+        first = token[0].strip(".,!?:;")
+        if first in _OPT_OUT_KEYWORDS:
+            return "opt_out"
+        if first in _OPT_IN_KEYWORDS:
+            return "opt_in"
+        if first in _HELP_KEYWORDS:
+            return "help"
+        return None
+
+    def _opt_out_reply(sender_number: str) -> str:
+        return (
+            f"{_BRAND_NAME}: You are unsubscribed. You will not receive more messages. "
+            f"Reply START to resubscribe. HELP for help."
+        )
+
+    def _opt_in_reply(sender_number: str) -> str:
+        return (
+            f"{_BRAND_NAME}: You are resubscribed. Reply STOP to unsubscribe. "
+            f"Msg&data rates may apply."
+        )
+
+    def _help_reply(sender_number: str) -> str:
+        return (
+            f"{_BRAND_NAME}: Support {_SUPPORT_CONTACT}. "
+            f"Reply STOP to unsubscribe. Msg&data rates may apply."
+        )
+
+    def _handle_a2p_keyword(provider_id: str, from_number: str, to_number: str, body_text: str) -> str | None:
+        """Process STOP/START/HELP on inbound SMS and return TwiML/auto-reply text if handled.
+
+        - from_number = consumer (recipient of our traffic)
+        - to_number   = our platform number
+        Consent ledger is keyed (sender=our number, recipient=consumer number).
+        """
+        kind = _classify_sms_keyword(body_text)
+        if not kind:
+            return None
+        reply_text: str
+        if kind == "opt_out":
+            storage.set_sms_consent(sender_number=to_number, recipient_number=from_number, status="opted_out")
+            reply_text = _opt_out_reply(from_number)
+        elif kind == "opt_in":
+            storage.set_sms_consent(sender_number=to_number, recipient_number=from_number, status="opted_in")
+            reply_text = _opt_in_reply(from_number)
+        else:
+            reply_text = _help_reply(from_number)
+        # Best-effort send the auto-reply via the same provider that delivered the inbound.
+        try:
+            provider = providers.get(provider_id)
+            if provider and provider.is_configured():
+                provider.send_message(to_number, from_number, reply_text)
+                storage.log_message(
+                    provider=provider_id,
+                    direction="outbound",
+                    from_number=to_number,
+                    to_number=from_number,
+                    body=reply_text,
+                    status="sent",
+                    provider_message_id=None,
+                    event_type=f"auto_reply_{kind}",
+                    response={},
+                )
+        except Exception as exc:
+            app.logger.warning("A2P auto-reply failed (%s): %s", kind, exc)
+        return reply_text
 
     @app.post("/webhooks/twilio/message")
     def twilio_message_webhook():
@@ -1294,6 +1532,11 @@ def create_app() -> Flask:
             event_type="inbound_message",
             response=form,
         )
+        # Handle A2P compliance keywords (STOP/START/HELP). If matched, reply via TwiML.
+        reply_text = _handle_a2p_keyword("twilio", from_number, to_number, body_text)
+        if reply_text:
+            twiml = f"<Response><Message>{xml_escape(reply_text)}</Message></Response>"
+            return Response(twiml, mimetype="text/xml")
         return jsonify({"ok": True})
 
     @app.post("/webhooks/twilio/voice")
@@ -1438,6 +1681,9 @@ def create_app() -> Flask:
                 event_type=event_type,
                 response=body,
             )
+            # A2P keyword handling on inbound messages only
+            if direction == "inbound":
+                _handle_a2p_keyword("telnyx", from_number, to_number, text)
 
         if "call" in event_type:
             from_number = str(payload_data.get("from", "")).strip()

@@ -677,7 +677,7 @@
     <div class="login-logo">2nd<span>Call</span></div>
     <div class="login-sub">Virtual Phone — Sign in to continue <span style="font-size:10px;color:var(--muted2);">v2.1</span></div>
 
-    <div style="display:flex;background:var(--surface2);border-radius:10px;padding:3px;margin-bottom:20px;gap:3px;">
+    <div id="auth-tabs" style="display:none;background:var(--surface2);border-radius:10px;padding:3px;margin-bottom:20px;gap:3px;">
       <button id="tab-email-btn" onclick="switchAuthTab('email')"
         style="flex:1;padding:7px;border-radius:8px;border:none;font-size:13px;font-weight:600;cursor:pointer;background:var(--accent);color:white;transition:all .15s;">
         Email Login
@@ -711,11 +711,48 @@
   <!-- Register card -->
   <div class="login-card animate-in hidden" id="register-card">
     <div class="login-logo">2nd<span>Call</span></div>
-    <div class="login-sub">Create your account</div>
-    <input type="text" id="reg-name" placeholder="Full name" autocomplete="name" />
-    <input type="email" id="reg-email" placeholder="Email address" autocomplete="email" />
-    <input type="password" id="reg-password" placeholder="Password (min 6 chars)" autocomplete="new-password" />
+    <div class="login-sub">Create your business account</div>
+
+    <div style="font-size:12px;color:var(--muted);margin-bottom:10px;">Your account</div>
+    <input type="text" id="reg-name" placeholder="Your full name" autocomplete="name" />
+    <input type="email" id="reg-email" placeholder="Work email address" autocomplete="email" />
+    <input type="password" id="reg-password" placeholder="Password (min 8 chars)" autocomplete="new-password" />
     <input type="password" id="reg-confirm" placeholder="Confirm password" autocomplete="new-password" />
+
+    <div style="font-size:12px;color:var(--muted);margin:14px 0 6px;">Your business (required for A2P 10DLC)</div>
+    <input type="text" id="reg-business-name" placeholder="Legal business name" autocomplete="organization" />
+    <input type="url" id="reg-business-website" placeholder="Business website (https://...)" autocomplete="url" />
+    <input type="text" id="reg-business-ein" placeholder="EIN / Tax ID (or equivalent)" autocomplete="off" />
+    <select id="reg-business-country" style="width:100%;padding:13px;border-radius:10px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:14px;margin-bottom:10px;">
+      <option value="">Country of incorporation…</option>
+      <option value="US">United States</option>
+      <option value="CA">Canada</option>
+      <option value="GB">United Kingdom</option>
+      <option value="AU">Australia</option>
+      <option value="PK">Pakistan</option>
+      <option value="IN">India</option>
+      <option value="AE">United Arab Emirates</option>
+      <option value="OTHER">Other</option>
+    </select>
+    <select id="reg-use-case" style="width:100%;padding:13px;border-radius:10px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:14px;margin-bottom:10px;">
+      <option value="">Primary messaging use case…</option>
+      <option value="notifications">Customer notifications</option>
+      <option value="2fa">2FA / account security</option>
+      <option value="reminders">Appointment reminders</option>
+      <option value="delivery">Delivery / logistics</option>
+      <option value="support">Conversational support</option>
+      <option value="marketing">Marketing (opt-in only)</option>
+    </select>
+
+    <label style="display:flex;gap:10px;align-items:flex-start;font-size:13px;color:var(--muted);margin:10px 0;cursor:pointer;">
+      <input type="checkbox" id="reg-accept-terms" style="margin-top:3px;" />
+      <span>I have read and accept the <a href="/terms" target="_blank" style="color:var(--accent-h);">Terms of Service</a> and <a href="/privacy" target="_blank" style="color:var(--accent-h);">Privacy Policy</a>.</span>
+    </label>
+    <label style="display:flex;gap:10px;align-items:flex-start;font-size:13px;color:var(--muted);margin:10px 0 16px;cursor:pointer;">
+      <input type="checkbox" id="reg-accept-sms" style="margin-top:3px;" />
+      <span>I have read and will follow the <a href="/sms-policy" target="_blank" style="color:var(--accent-h);">SMS Policy</a> and <a href="/acceptable-use" target="_blank" style="color:var(--accent-h);">Acceptable Use Policy</a>, including obtaining prior express consent from every recipient and honoring STOP requests.</span>
+    </label>
+
     <button class="btn-login" id="register-btn">Create Account</button>
     <div style="text-align:center;margin-top:14px;font-size:13px;color:var(--muted);">
       Already have an account?
@@ -1643,18 +1680,51 @@ document.getElementById("register-btn").addEventListener("click", async () => {
   const email = document.getElementById("reg-email").value.trim();
   const pass = document.getElementById("reg-password").value;
   const conf = document.getElementById("reg-confirm").value;
+  const businessName = document.getElementById("reg-business-name").value.trim();
+  const businessWebsite = document.getElementById("reg-business-website").value.trim();
+  const businessEin = document.getElementById("reg-business-ein").value.trim();
+  const businessCountry = document.getElementById("reg-business-country").value;
+  const useCase = document.getElementById("reg-use-case").value;
+  const acceptTerms = document.getElementById("reg-accept-terms").checked;
+  const acceptSms = document.getElementById("reg-accept-sms").checked;
   const err = document.getElementById("reg-err");
   err.textContent = "";
   if (!email || !pass) { err.textContent = "Email and password are required."; return; }
   if (pass !== conf) { err.textContent = "Passwords do not match."; return; }
-  if (pass.length < 6) { err.textContent = "Password must be at least 6 characters."; return; }
+  if (pass.length < 8) { err.textContent = "Password must be at least 8 characters."; return; }
+  if (!businessName || !businessCountry || !useCase) {
+    err.textContent = "Please complete your business name, country, and primary use case."; return;
+  }
+  if (!acceptTerms || !acceptSms) {
+    err.textContent = "You must accept the Terms, Privacy Policy, and SMS / Acceptable Use Policies."; return;
+  }
   try {
-    const d = await api("/api/auth/register", { method:"POST", body: JSON.stringify({name, email, password: pass}) });
+    const d = await api("/api/auth/register", { method:"POST", body: JSON.stringify({
+      name, email, password: pass,
+      business_name: businessName,
+      business_website: businessWebsite,
+      business_ein: businessEin,
+      business_country: businessCountry,
+      use_case: useCase,
+      accept_terms: acceptTerms,
+      accept_sms_policy: acceptSms,
+    }) });
     if (d.user) S.currentUser = d.user;
     S.isAdmin = d.user?.role === "admin";
     showApp();
   } catch(e) { err.textContent = e.message; }
 });
+
+// Show admin-token tab only when URL has ?admin=1 (hidden by default).
+(function initAdminAuthTab(){
+  try {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("admin") === "1") {
+      const tabs = document.getElementById("auth-tabs");
+      if (tabs) tabs.style.display = "flex";
+    }
+  } catch(e) {}
+})();
 // Enter key support
 ["login-email","login-password"].forEach(id => {
   document.getElementById(id).addEventListener("keydown", e => { if (e.key==="Enter") document.getElementById("login-btn").click(); });
@@ -1662,8 +1732,9 @@ document.getElementById("register-btn").addEventListener("click", async () => {
 document.getElementById("login-token").addEventListener("keydown", e => {
   if (e.key === "Enter") document.getElementById("token-login-btn").click();
 });
-["reg-name","reg-email","reg-password","reg-confirm"].forEach(id => {
-  document.getElementById(id).addEventListener("keydown", e => { if (e.key==="Enter") document.getElementById("register-btn").click(); });
+["reg-name","reg-email","reg-password","reg-confirm","reg-business-name","reg-business-website","reg-business-ein"].forEach(id => {
+  const el = document.getElementById(id);
+  if (el) el.addEventListener("keydown", e => { if (e.key==="Enter") document.getElementById("register-btn").click(); });
 });
 
 // ════════════════════════════════════════════
