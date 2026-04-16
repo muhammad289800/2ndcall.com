@@ -7,15 +7,15 @@ these strings without escaping.
 from __future__ import annotations
 
 EFFECTIVE_DATE = "April 15, 2026"
-CONTACT_EMAIL = "support@2ndcall.com"
-LEGAL_EMAIL = "legal@2ndcall.com"
-ABUSE_EMAIL = "abuse@2ndcall.com"
-OPERATOR = "MBNECOM LLC"
+CONTACT_EMAIL = "support@your2ndline.com"
+LEGAL_EMAIL = "legal@your2ndline.com"
+ABUSE_EMAIL = "abuse@your2ndline.com"
+OPERATOR = "Dream Easy LLC"
 
 
 PRIVACY_HTML = """
 <h2>1. Who we are</h2>
-<p>2ndCall is an Application-to-Person (A2P) SMS and programmable voice platform operated by MBNECOM LLC (\u201cwe\u201d, \u201cus\u201d, \u201c2ndCall\u201d). This Privacy Policy explains what information we collect, how we use it, and the choices you have.</p>
+<p>2ndCall is an Application-to-Person (A2P) SMS and programmable voice platform operated by Dream Easy LLC (\u201cwe\u201d, \u201cus\u201d, \u201c2ndCall\u201d). This Privacy Policy explains what information we collect, how we use it, and the choices you have.</p>
 
 <h2>2. Information we collect</h2>
 <h3>Account information</h3>
@@ -74,7 +74,7 @@ PRIVACY_HTML = """
 <p>We encrypt data in transit with TLS 1.2+, hash passwords with scrypt, and restrict production database access to named operators. No system is perfectly secure \u2014 please report suspected vulnerabilities to <a href="mailto:{abuse_email}">{abuse_email}</a>.</p>
 
 <h2>8. Contact</h2>
-<p>MBNECOM LLC \u2014 Privacy inquiries: <a href="mailto:{legal_email}">{legal_email}</a>. Abuse reports: <a href="mailto:{abuse_email}">{abuse_email}</a>.</p>
+<p>Dream Easy LLC \u2014 Privacy inquiries: <a href="mailto:{legal_email}">{legal_email}</a>. Abuse reports: <a href="mailto:{abuse_email}">{abuse_email}</a>.</p>
 """.format(legal_email=LEGAL_EMAIL, abuse_email=ABUSE_EMAIL)
 
 
@@ -108,10 +108,10 @@ TERMS_HTML = """
 <p>2ndCall is provided \u201cas is\u201d without warranties of any kind, express or implied. We do not guarantee uninterrupted service, delivery of any specific message, or any particular throughput.</p>
 
 <h2>7. Limitation of liability</h2>
-<p>To the fullest extent permitted by law, MBNECOM LLC will not be liable for any indirect, incidental, consequential, or punitive damages. Our total liability is limited to the fees you paid us in the 12 months preceding the claim.</p>
+<p>To the fullest extent permitted by law, Dream Easy LLC will not be liable for any indirect, incidental, consequential, or punitive damages. Our total liability is limited to the fees you paid us in the 12 months preceding the claim.</p>
 
 <h2>8. Indemnification</h2>
-<p>You will indemnify and hold harmless MBNECOM LLC from any claims arising out of your use of the service, your content, your failure to obtain consent, or your violation of these Terms or applicable law \u2014 including carrier fines and TCPA claims.</p>
+<p>You will indemnify and hold harmless Dream Easy LLC from any claims arising out of your use of the service, your content, your failure to obtain consent, or your violation of these Terms or applicable law \u2014 including carrier fines and TCPA claims.</p>
 
 <h2>9. Governing law</h2>
 <p>These Terms are governed by the laws of the State of Delaware, USA, without regard to conflict-of-laws principles. Disputes will be resolved in the state or federal courts located in New Castle County, Delaware.</p>
@@ -120,7 +120,7 @@ TERMS_HTML = """
 <p>We may update these Terms from time to time. Material changes will be communicated by email. Continued use after the effective date constitutes acceptance.</p>
 
 <h2>11. Contact</h2>
-<p>MBNECOM LLC \u2014 <a href="mailto:{legal_email}">{legal_email}</a>.</p>
+<p>Dream Easy LLC \u2014 <a href="mailto:{legal_email}">{legal_email}</a>.</p>
 """.format(legal_email=LEGAL_EMAIL)
 
 
@@ -214,7 +214,7 @@ AUP_HTML = """
 
 DPA_HTML = """
 <div class="callout">
-  This Data Processing Addendum (\u201cDPA\u201d) forms part of the Terms of Service between you (\u201cController\u201d) and MBNECOM LLC (\u201cProcessor\u201d). It applies when you process personal data of individuals in the EEA, UK, or other jurisdictions requiring a DPA.
+  This Data Processing Addendum (\u201cDPA\u201d) forms part of the Terms of Service between you (\u201cController\u201d) and Dream Easy LLC (\u201cProcessor\u201d). It applies when you process personal data of individuals in the EEA, UK, or other jurisdictions requiring a DPA.
 </div>
 
 <h2>1. Subject matter</h2>
